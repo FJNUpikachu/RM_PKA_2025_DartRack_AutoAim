@@ -1,0 +1,40 @@
+/**:
+  ros__parameters:
+    # 一欧元滤波器参数
+    filter:
+      enable: true           # 滤波器开关
+      freq: 30.0             # 频率
+      min_cutoff: 1.0        # 最小截止频率
+      beta: 0.5              # 速度系数
+
+    # 发射判断阈值（根据模式区分）
+    fire:
+      x_threshold: 3.0       # x轴允许的最大偏差（像素）
+      # 前哨站模式(mode=1)的y轴阈值
+      sentinel_y_min: 100.0  # 前哨站y轴最小阈值
+      sentinel_y_max: 500.0  # 前哨站y轴最大阈值
+      # 基地模式(mode=2)的y轴阈值
+      base_y_min: 80.0       # 基地y轴最小阈值
+      base_y_max: 450.0      # 基地y轴最大阈值
+
+    # 弹道模型参数
+    ballistic:
+      enable: true           # 弹道解算总开关
+      gravity: 9.81          # 重力加速度 (m/s²)
+      drag_coeff: 0.01       # 阻力系数
+      muzzle_velocity: 10.0  # 枪口初速度 (m/s)
+      # 前哨站和基地的距离参数
+      sentinel_distance: 5.0 # 到前哨站的水平距离 (m)
+      base_distance: 8.0     # 到基地的水平距离 (m)
+      vertical_offset: 1.2   # 竖直距离 (m)
+
+    # 发射点位置 (相对于世界坐标系)
+    launch_position:
+      x: 0.0
+      y: 0.0
+      z: 0.5
+
+    # 可视化参数
+    visualization:
+      enable_tf: true        # TF关系发布开关
+      enable_rviz: true      # RViz可视化开关

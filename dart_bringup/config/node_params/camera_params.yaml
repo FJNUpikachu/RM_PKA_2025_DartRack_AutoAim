@@ -1,0 +1,13 @@
+/**:
+  ros__parameters:
+    camera_info_url: package://light_bringup/config/camera_info.yaml
+    camera_name: narrow_stereo
+    exposure_time: 11000
+    gain: 10.0
+
+    # 内参日志开关（true=输出详细内参，false=仅输出基本加载信息）
+    enable_camera_info_log: true
+
+    # 录制相关参数
+    recording: false                
+    recording_path: ./recorded_images

@@ -1,5 +1,4 @@
 # 【施工中！】
-# 工程详见release
 
 # Pikachu战队2026 DartTrack Vision Project
 
@@ -44,10 +43,6 @@ ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 ## 致谢
 
 
-
-
-
-
 # 调试专用
 
 ## 编译及运行
@@ -60,3 +55,13 @@ ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 colcon build --packages-select dart_interfaces
 ros2 interface show dart_interfaces/msg/Light
 
+## 日志
+20250916 已完成serial camera detector 差solver
+
+20251016
+串口可能要改为
+电控：32位
+uint8 1位 模式：裁判系统值
+float 4位 3508电流值
+float 4位 pitch值
+float 4位 yaw值
