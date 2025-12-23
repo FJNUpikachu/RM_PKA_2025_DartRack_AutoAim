@@ -32,6 +32,8 @@ private:
   
   // 辅助函数：格式化字节为十六进制字符串
   std::string format_bytes(const std::vector<uint8_t>& bytes);
+  // 发送数据的通用函数
+  bool send_serial_data(const std::vector<uint8_t>& buffer);
 
   std::unique_ptr<UARTDriver> uart_driver_;
   rclcpp::Subscription<dart_interfaces::msg::SerialSendData>::SharedPtr send_sub_;
@@ -46,7 +48,7 @@ private:
   int serial_mode_;  // 0:关闭, 1:实际串口, 2:虚拟串口
   double virtual_serial_frequency_;
   float virtual_yaw_;
-  uint8_t virtual_fire_advice_;
+  int virtual_fire_advice_;  // 修改为int类型，以便从yaml正确读取
   double read_frequency_;
   int max_failure_count_;
   double health_check_interval_;

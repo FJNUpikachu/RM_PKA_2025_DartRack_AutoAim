@@ -50,7 +50,7 @@ UARTNode::UARTNode(const rclcpp::NodeOptions & options)
       init_uart();
       RCLCPP_INFO(get_logger(), "已启用实际串口模式");
     } else if (serial_mode_ == 2) {
-      // 虚拟串口模式
+      // 虚拟串口模式 - 也需要初始化串口
       init_uart();
       auto period = std::chrono::duration<double>(1.0 / virtual_serial_frequency_);
       virtual_serial_timer_ = create_wall_timer(
@@ -222,6 +222,48 @@ std::string UARTNode::format_bytes(const std::vector<uint8_t>& bytes)
   return ss.str();
 }
 
+// 通用的串口发送函数
+bool UARTNode::send_serial_data(const std::vector<uint8_t>& buffer)
+{
+  if (!uart_driver_) {
+    RCLCPP_ERROR(get_logger(), "串口驱动未初始化");
+    return false;
+  }
+
+  // 检查串口是否打开
+  if (!uart_driver_->is_open()) {
+    RCLCPP_ERROR(get_logger(), "串口未打开，无法发送数据");
+    consecutive_failure_count_++;
+    is_healthy_ = false;
+    return false;
+  }
+
+  // 发送数据
+  ssize_t bytes_written = uart_driver_->write_data(buffer.data(), buffer.size());
+
+  // 处理发送结果
+  if (bytes_written < 0) {
+    RCLCPP_ERROR(get_logger(), "发送数据失败");
+    consecutive_failure_count_++;
+    is_healthy_ = false;
+    return false;
+  } else if (static_cast<size_t>(bytes_written) != buffer.size()) {
+    RCLCPP_WARN(get_logger(), "部分数据发送失败，期望 %zu 字节，实际 %zd 字节",
+                buffer.size(), bytes_written);
+    consecutive_failure_count_++;
+    is_healthy_ = false;
+    return false;
+  } else {
+    if (enable_send_data_print_) {
+      RCLCPP_INFO(get_logger(), "发送数据成功: %s", format_bytes(buffer).c_str());
+    }
+    consecutive_failure_count_ = 0;
+    is_healthy_ = true;
+    last_successful_operation_time_ = this->now();
+    return true;
+  }
+}
+
 void UARTNode::send_data_callback(const dart_interfaces::msg::SerialSendData::SharedPtr msg)
 {
   if (serial_mode_ != 1 || !uart_driver_) {
@@ -230,39 +272,12 @@ void UARTNode::send_data_callback(const dart_interfaces::msg::SerialSendData::Sh
   }
 
   try {
-    // 检查串口是否打开
-    if (!uart_driver_->is_open()) {
-      RCLCPP_ERROR(get_logger(), "串口未打开，无法发送数据");
-      consecutive_failure_count_++;
-      is_healthy_ = false;
-      return;
-    }
-
     // 时间戳偏移
     auto adjusted_time = this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
     
     // 打包发送
     auto buffer = UARTProtocol::pack_send_data(*msg);
-    ssize_t bytes_written = uart_driver_->write_data(buffer.data(), buffer.size());
-
-    // 日志输出（受发送打印开关控制）
-    if (enable_send_data_print_) {
-      if (bytes_written < 0) {
-        RCLCPP_ERROR(get_logger(), "发送数据失败");
-        consecutive_failure_count_++;
-        is_healthy_ = false;
-      } else if (static_cast<size_t>(bytes_written) != buffer.size()) {
-        RCLCPP_WARN(get_logger(), "部分数据发送失败，期望 %zu 字节，实际 %zd 字节",
-                    buffer.size(), bytes_written);
-        consecutive_failure_count_++;
-        is_healthy_ = false;
-      } else {
-        RCLCPP_INFO(get_logger(), "发送数据成功: %s", format_bytes(buffer).c_str());
-        consecutive_failure_count_ = 0;
-        is_healthy_ = true;
-        last_successful_operation_time_ = this->now();
-      }
-    }
+    send_serial_data(buffer);
   } catch (const std::exception& e) {
     RCLCPP_ERROR(get_logger(), "发送数据时发生错误: %s", e.what());
     consecutive_failure_count_++;
@@ -274,23 +289,36 @@ void UARTNode::virtual_serial_timer_callback()
 {
   if (serial_mode_ != 2) return;
 
-  // 创建虚拟发送数据
-  auto msg = std::make_unique<dart_interfaces::msg::SerialSendData>();
-  msg->header.stamp = this->now();
-  msg->yaw = virtual_yaw_;
-  msg->fire_advice = virtual_fire_advice_;
+  try {
+    // 创建虚拟发送数据
+    auto msg = std::make_unique<dart_interfaces::msg::SerialSendData>();
+    
+    // 时间戳偏移（与实际串口模式保持一致）
+    auto adjusted_time = this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
+    msg->header.stamp = adjusted_time;
+    
+    msg->yaw = virtual_yaw_;
+    msg->fire_advice = static_cast<uint8_t>(virtual_fire_advice_);  // 类型转换
 
-  // 模拟发送过程
-  auto buffer = UARTProtocol::pack_send_data(*msg);
-  
-  if (enable_send_data_print_) {
-    RCLCPP_INFO(get_logger(), "虚拟发送数据: %s", format_bytes(buffer).c_str());
+    // 打包数据并实际发送
+    auto buffer = UARTProtocol::pack_send_data(*msg);
+    
+    // 实际通过串口发送数据
+    bool send_success = send_serial_data(buffer);
+    
+    if (enable_send_data_print_) {
+      if (send_success) {
+        RCLCPP_INFO(get_logger(), "虚拟串口发送数据成功: yaw=%.2f, fire_advice=%d", 
+                    virtual_yaw_, virtual_fire_advice_);
+      } else {
+        RCLCPP_ERROR(get_logger(), "虚拟串口发送数据失败");
+      }
+    }
+  } catch (const std::exception& e) {
+    RCLCPP_ERROR(get_logger(), "虚拟串口发送时发生错误: %s", e.what());
+    consecutive_failure_count_++;
+    is_healthy_ = false;
   }
-  
-  // 更新健康状态
-  consecutive_failure_count_ = 0;
-  is_healthy_ = true;
-  last_successful_operation_time_ = this->now();
 }
 
 void UARTNode::serial_health_check_timer_callback()
