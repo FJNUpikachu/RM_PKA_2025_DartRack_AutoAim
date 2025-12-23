@@ -14,38 +14,51 @@ find_package(image_transport REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(std_srvs REQUIRED)
-
-# 包含头文件目录
-include_directories(include)
+find_package(dart_interfaces REQUIRED)
+find_package(dart_utils REQUIRED)
 
 # 编译节点库
 add_library(dart_detector_core SHARED
   src/dart_detector_node.cpp
   src/detect_method.cpp
-  src/screenshot_manager.cpp
-  src/video_recorder.cpp
 )
+
+# 为库目标设置包含目录
+target_include_directories(dart_detector_core PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${OpenCV_INCLUDE_DIRS}
+)
+
 ament_target_dependencies(dart_detector_core
-  "rclcpp"
-  "sensor_msgs"
-  "cv_bridge"
-  "image_transport"
-  "OpenCV"
-  "rclcpp_components"
-  "std_srvs"
+  rclcpp
+  sensor_msgs
+  cv_bridge
+  image_transport
+  OpenCV
+  rclcpp_components
+  std_srvs
+  dart_interfaces
+  dart_utils
 )
 
 # 注册组件
-rclcpp_components_register_node(dart_detector_core 
-  PLUGIN "dart_detector::DartDetectorNode" 
-  EXECUTABLE dart_detector_node
+rclcpp_components_register_nodes(dart_detector_core 
+  pka::DartDetectorNode
 )
+
+# 测试部分（如果需要）
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  set(ament_cmake_copyright_FOUND TRUE)
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
 
 # 安装规则
 install(TARGETS
   dart_detector_core
-  LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
 
@@ -54,23 +67,11 @@ install(DIRECTORY
   DESTINATION include
 )
 
-# 安装可执行文件
-install(TARGETS
-  dart_detector_node
-  DESTINATION lib/${PROJECT_NAME}
+# 显式安装package.xml
+install(FILES
+  package.xml
+  DESTINATION share/${PROJECT_NAME}
 )
 
-# 导出依赖
-ament_export_include_directories(include)
-ament_export_libraries(dart_detector_core)
-ament_export_dependencies(
-  rclcpp 
-  sensor_msgs 
-  cv_bridge 
-  image_transport 
-  OpenCV 
-  rclcpp_components 
-  std_srvs
-)
-
+# 正确的 ament_package 调用方式
 ament_package()

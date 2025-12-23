@@ -16,18 +16,12 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(tf2 REQUIRED)
-find_package(tf2_ros REQUIRED)
 find_package(dart_interfaces REQUIRED)
-find_package(dart_utils REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED)
 
 include_directories(
   include
   ${EIGEN3_INCLUDE_DIRS}
-  ${OpenCV_INCLUDE_DIRS}
 )
 
 # Solver node library
@@ -35,7 +29,6 @@ add_library(dart_solver SHARED
   src/solver_node.cpp
   src/solver_method.cpp
   src/one_euro_filter.cpp
-  src/ballistic_model.cpp
 )
 
 ament_target_dependencies(dart_solver
@@ -43,16 +36,11 @@ ament_target_dependencies(dart_solver
   rclcpp_components
   std_msgs
   sensor_msgs
-  geometry_msgs
-  tf2
-  tf2_ros
   dart_interfaces
-  dart_utils
   Eigen3
-  OpenCV
 )
 
-rclcpp_components_register_nodes(dart_solver "dart_solver::SolverNode")
+rclcpp_components_register_nodes(dart_solver "pka::SolverNode")
 set(node_plugins "${node_plugins}dart_solver::SolverNode;$<TARGET_FILE:dart_solver>\n")
 
 install(TARGETS
@@ -78,12 +66,9 @@ ament_export_dependencies(
   rclcpp
   rclcpp_components
   std_msgs
-  geometry_msgs
-  tf2
-  tf2_ros
+  sensor_msgs
   dart_interfaces
   Eigen3
-  OpenCV
 )
 
 ament_package()

@@ -9,7 +9,7 @@
 #include "dart_serial/uart_node.hpp" 
 #include "dart_utils/heartbeat.hpp"
 
-namespace dart_serial
+namespace pka
 {
 
 UARTNode::UARTNode(const rclcpp::NodeOptions & options)
@@ -17,13 +17,10 @@ UARTNode::UARTNode(const rclcpp::NodeOptions & options)
   port_name_("/dev/ttyACM0"),
   baudrate_(115200),
   timestamp_offset_(0.0),
-  enable_receive_data_print_(false),
   enable_send_data_print_(true),
   serial_mode_(0),
   virtual_serial_frequency_(10.0),
   virtual_yaw_(0.0f),
-  virtual_pitch_(0.0f),
-  virtual_mode_(0),
   virtual_fire_advice_(0),
   read_frequency_(100.0),
   max_failure_count_(3),
@@ -31,7 +28,7 @@ UARTNode::UARTNode(const rclcpp::NodeOptions & options)
   max_restart_attempts_(5),
   restart_cooldown_(5.0),
   enable_auto_restart_(true),
-  enable_unlimited_restart_(true),  // 默认启用无限重启
+  enable_unlimited_restart_(true),
   restart_delay_(1000),
   consecutive_failure_count_(0),
   total_restart_attempts_(0),
@@ -42,8 +39,7 @@ UARTNode::UARTNode(const rclcpp::NodeOptions & options)
   try {
     init_parameters();
     init_subscriber();
-    init_publisher();
-    init_timer();  // 初始化定时器，包括健康检查定时器
+    init_timer();
     
     // 初始化心跳
     heartbeat_pub_ = HeartBeatPublisher::create(this);
@@ -65,9 +61,7 @@ UARTNode::UARTNode(const rclcpp::NodeOptions & options)
       RCLCPP_INFO(get_logger(), "串口已关闭，不进行数据收发");
     }
 
-    // 打印发送和接收数据开关状态（修改）
-    RCLCPP_INFO(get_logger(), "接收数据打印功能: %s", 
-                enable_receive_data_print_ ? "启用" : "禁用");
+    // 打印发送数据开关状态
     RCLCPP_INFO(get_logger(), "发送数据打印功能: %s", 
                 enable_send_data_print_ ? "启用" : "禁用");
 
@@ -106,15 +100,12 @@ void UARTNode::init_parameters()
   // 通用参数
   timestamp_offset_ = this->declare_parameter("timestamp_offset", 0.0);
   
-  // 数据打印控制（修改参数名）
-  enable_receive_data_print_ = this->declare_parameter("enable_receive_data_print", false);
+  // 数据打印控制
   enable_send_data_print_ = this->declare_parameter("enable_send_data_print", false);
   
   // 虚拟串口参数
   virtual_serial_frequency_ = this->declare_parameter("virtual_serial_frequency", 10.0);
   virtual_yaw_ = this->declare_parameter("virtual_yaw", 0.0f);
-  virtual_pitch_ = this->declare_parameter("virtual_pitch", 0.0f);
-  virtual_mode_ = this->declare_parameter("virtual_mode", 0);
   virtual_fire_advice_ = this->declare_parameter("virtual_fire_advice", 0);
   
   // 串口健康检查和重启参数
@@ -168,12 +159,10 @@ void UARTNode::init_parameters()
     RCLCPP_INFO(get_logger(), "硬件串口参数: %s @ %d, 读取频率: %.1fHz",
                 port_name_.c_str(), baudrate_, read_frequency_);
   } else if (serial_mode_ == 2) {
-    RCLCPP_INFO(get_logger(), "虚拟串口参数: 频率: %.1fHz, yaw: %.2f, pitch: %.2f, 火控: %d, 模式: %d",
+    RCLCPP_INFO(get_logger(), "虚拟串口参数: 频率: %.1fHz, yaw: %.2f, 火控: %d",
                 virtual_serial_frequency_,
                 virtual_yaw_,
-                virtual_pitch_,
-                virtual_fire_advice_,
-                virtual_mode_);
+                virtual_fire_advice_);
   }
 }
 
@@ -186,20 +175,8 @@ void UARTNode::init_subscriber()
   }
 }
 
-void UARTNode::init_publisher()
-{
-  // 创建接收数据发布者
-  receive_pub_ = create_publisher<dart_interfaces::msg::SerialReceiveData>(
-    "serial_receive_data", 10);
-}
-
 void UARTNode::init_timer()
 {
-  // 初始化串口读取定时器
-  auto read_period = std::chrono::duration<double>(1.0 / read_frequency_);
-  read_timer_ = create_wall_timer(
-    read_period, std::bind(&UARTNode::read_data_timer_callback, this));
-    
   // 初始化串口健康检查定时器
   auto health_period = std::chrono::duration<double>(health_check_interval_);
   serial_health_check_timer_ = create_wall_timer(
@@ -269,7 +246,7 @@ void UARTNode::send_data_callback(const dart_interfaces::msg::SerialSendData::Sh
     ssize_t bytes_written = uart_driver_->write_data(buffer.data(), buffer.size());
 
     // 日志输出（受发送打印开关控制）
-    if (enable_send_data_print_) {  // 使用发送打印开关
+    if (enable_send_data_print_) {
       if (bytes_written < 0) {
         RCLCPP_ERROR(get_logger(), "发送数据失败");
         consecutive_failure_count_++;
@@ -280,84 +257,14 @@ void UARTNode::send_data_callback(const dart_interfaces::msg::SerialSendData::Sh
         consecutive_failure_count_++;
         is_healthy_ = false;
       } else {
-        RCLCPP_INFO(get_logger(), "发送数据 [时间戳: %.6f]: pitch=%.3f, yaw=%.3f, fire_advice=%d",
-                    adjusted_time.nanoseconds() / 1e9,
-                    msg->pitch, msg->yaw, msg->fire_advice);
-        RCLCPP_INFO(get_logger(), "发送原始字节: %s", format_bytes(buffer).c_str());
-        
-        // 发送成功，重置失败计数
+        RCLCPP_INFO(get_logger(), "发送数据成功: %s", format_bytes(buffer).c_str());
         consecutive_failure_count_ = 0;
         is_healthy_ = true;
         last_successful_operation_time_ = this->now();
       }
     }
   } catch (const std::exception& e) {
-    RCLCPP_ERROR(get_logger(), "发送数据回调异常: %s", e.what());
-    consecutive_failure_count_++;
-    is_healthy_ = false;
-  }
-}
-
-void UARTNode::read_data_timer_callback()
-{
-  if (serial_mode_ != 1 || !uart_driver_ || !receive_pub_) {
-    return;
-  }
-
-  try {
-    // 检查串口是否打开
-    if (!uart_driver_->is_open()) {
-      RCLCPP_ERROR(get_logger(), "串口未打开，无法读取数据");
-      consecutive_failure_count_++;
-      is_healthy_ = false;
-      return;
-    }
-
-    // 读取串口数据
-    uint8_t buffer[UARTProtocol::RECEIVE_PACKET_SIZE];
-    ssize_t bytes_read = uart_driver_->read_data(buffer, UARTProtocol::RECEIVE_PACKET_SIZE);
-
-    if (bytes_read < 0) {
-      RCLCPP_ERROR(get_logger(), "读取数据失败");
-      consecutive_failure_count_++;
-      is_healthy_ = false;
-    } else if (bytes_read == 0) {
-      // 没有数据可读，不增加失败计数
-      return;
-    } else if (static_cast<size_t>(bytes_read) != UARTProtocol::RECEIVE_PACKET_SIZE) {
-      RCLCPP_WARN(get_logger(), "接收到不完整的数据，期望 %zu 字节，实际 %zd 字节",
-                  UARTProtocol::RECEIVE_PACKET_SIZE, bytes_read);
-      consecutive_failure_count_++;
-      is_healthy_ = false;
-    } else {
-      // 尝试解析数据
-      auto receive_msg = UARTProtocol::unpack_receive_data(buffer, UARTProtocol::RECEIVE_PACKET_SIZE);
-      if (receive_msg) {
-        // 设置时间戳
-        receive_msg->header.stamp = this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
-        
-        // 发布消息
-        receive_pub_->publish(*receive_msg);
-        
-        // 打印日志（受接收打印开关控制）
-        if (enable_receive_data_print_) {  // 使用接收打印开关
-          RCLCPP_INFO(get_logger(), "接收数据: mode=%d", receive_msg->mode);
-          std::vector<uint8_t> byte_vec(buffer, buffer + bytes_read);
-          RCLCPP_INFO(get_logger(), "接收原始字节: %s", format_bytes(byte_vec).c_str());
-        }
-        
-        // 接收成功，重置失败计数
-        consecutive_failure_count_ = 0;
-        is_healthy_ = true;
-        last_successful_operation_time_ = this->now();
-      } else {
-        RCLCPP_ERROR(get_logger(), "解析数据失败");
-        consecutive_failure_count_++;
-        is_healthy_ = false;
-      }
-    }
-  } catch (const std::exception& e) {
-    RCLCPP_ERROR(get_logger(), "读取数据异常: %s", e.what());
+    RCLCPP_ERROR(get_logger(), "发送数据时发生错误: %s", e.what());
     consecutive_failure_count_++;
     is_healthy_ = false;
   }
@@ -365,129 +272,86 @@ void UARTNode::read_data_timer_callback()
 
 void UARTNode::virtual_serial_timer_callback()
 {
-  if (serial_mode_ != 2 || !receive_pub_) {
-    return;
+  if (serial_mode_ != 2) return;
+
+  // 创建虚拟发送数据
+  auto msg = std::make_unique<dart_interfaces::msg::SerialSendData>();
+  msg->header.stamp = this->now();
+  msg->yaw = virtual_yaw_;
+  msg->fire_advice = virtual_fire_advice_;
+
+  // 模拟发送过程
+  auto buffer = UARTProtocol::pack_send_data(*msg);
+  
+  if (enable_send_data_print_) {
+    RCLCPP_INFO(get_logger(), "虚拟发送数据: %s", format_bytes(buffer).c_str());
   }
-
-  try {
-    // 构造虚拟接收数据
-    auto virtual_msg = std::make_unique<dart_interfaces::msg::SerialReceiveData>();
-    virtual_msg->header.stamp = this->now();
-    virtual_msg->mode = virtual_mode_;  // 只保留mode字段
-
-    // 发布虚拟数据
-    receive_pub_->publish(*virtual_msg);
-
-    // 虚拟接收打印（受接收打印开关控制）
-    if (enable_receive_data_print_) {  // 使用接收打印开关
-      RCLCPP_INFO(get_logger(), "虚拟串口接收: mode=%d", virtual_mode_);
-    }
-    
-    // 虚拟接收成功，重置失败计数
-    consecutive_failure_count_ = 0;
-    is_healthy_ = true;
-    last_successful_operation_time_ = this->now();
-  } catch (const std::exception& e) {
-    RCLCPP_ERROR(get_logger(), "虚拟串口接收异常: %s", e.what());
-    consecutive_failure_count_++;
-    is_healthy_ = false;
-  }
+  
+  // 更新健康状态
+  consecutive_failure_count_ = 0;
+  is_healthy_ = true;
+  last_successful_operation_time_ = this->now();
 }
 
 void UARTNode::serial_health_check_timer_callback()
 {
-  // 关闭模式或禁用自动重启不进行健康检查和重启
-  if (serial_mode_ == 0 || !enable_auto_restart_) {
+  if (serial_mode_ == 0) return;
+
+  // 检查是否超过最大连续失败次数
+  if (consecutive_failure_count_ >= max_failure_count_) {
+    RCLCPP_WARN(get_logger(), "连续失败次数达到阈值 %d，尝试重启串口", max_failure_count_);
+    restart_serial();
     return;
   }
 
-  // 检查串口是否存在且已打开
-  bool is_open = uart_driver_ && uart_driver_->is_open();
+  // 检查是否长时间无成功操作
+  auto now = this->now();
+  auto time_since_last_success = now - last_successful_operation_time_;
   
-  // 检查是否超过最大重启次数（仅在不启用无限重启时生效）
-  if (!enable_unlimited_restart_ && max_restart_attempts_ > 0 && total_restart_attempts_ >= max_restart_attempts_) {
-    RCLCPP_FATAL(get_logger(), "已达到最大重启次数 (%d)，请手动检查串口", max_restart_attempts_);
-    return;
-  }
-
-  // 检查健康状态
-  if (!is_open || !is_healthy_ || consecutive_failure_count_ >= max_failure_count_) {
-    rclcpp::Duration time_since_last_restart = this->now() - last_restart_time_;
-    
-    // 检查是否在冷却期内
-    if (time_since_last_restart.seconds() < restart_cooldown_) {
-      RCLCPP_WARN(get_logger(), "串口不健康，但处于重启冷却期 (%d/%d 失败)，剩余冷却时间: %.1fs",
-                  consecutive_failure_count_, max_failure_count_,
-                  restart_cooldown_ - time_since_last_restart.seconds());
-      return;
-    }
-    
-    // 尝试重启串口
-    std::string restart_msg = enable_unlimited_restart_ ? 
-      "串口不健康，尝试重启（无限重启模式，总重启次数: %d）" : 
-      "串口不健康，尝试重启（%d/%d 失败, 总重启次数: %d/%d）";
-    
-    if (enable_unlimited_restart_) {
-      RCLCPP_WARN(get_logger(), restart_msg.c_str(), total_restart_attempts_);
-    } else {
-      RCLCPP_WARN(get_logger(), restart_msg.c_str(),
-                  consecutive_failure_count_, max_failure_count_,
-                  total_restart_attempts_, max_restart_attempts_);
-    }
-    
-    if (restart_serial()) {
-      RCLCPP_INFO(get_logger(), "串口重启成功");
-    } else {
-      RCLCPP_ERROR(get_logger(), "串口重启失败");
-    }
-  } else {
-    // 串口状态正常
-    if (enable_receive_data_print_ || enable_send_data_print_) {  // 任一打印开关开启时才显示
-      RCLCPP_DEBUG(get_logger(), "串口状态正常");
-    }
+  if (time_since_last_success.seconds() > health_check_interval_ * 2) {
+    RCLCPP_WARN(get_logger(), "长时间未收到成功操作，尝试重启串口");
+    restart_serial();
   }
 }
 
 bool UARTNode::restart_serial()
 {
-  // 如果禁用自动重启，直接返回失败
   if (!enable_auto_restart_) {
-    RCLCPP_WARN(get_logger(), "自动重启功能已禁用，不执行重启操作");
+    RCLCPP_INFO(get_logger(), "自动重启已禁用，不执行重启操作");
     return false;
   }
+
+  auto now = this->now();
+  auto time_since_last_restart = now - last_restart_time_;
   
-  // 记录重启时间
-  last_restart_time_ = this->now();
+  // 检查是否在冷却期内
+  if (time_since_last_restart.seconds() < restart_cooldown_) {
+    RCLCPP_INFO(get_logger(), "处于重启冷却期，不执行重启操作");
+    return false;
+  }
+
+  // 检查是否超过最大重启次数
+  if (!enable_unlimited_restart_ && total_restart_attempts_ >= max_restart_attempts_) {
+    RCLCPP_ERROR(get_logger(), "已达到最大重启次数 %d，不再尝试重启", max_restart_attempts_);
+    return false;
+  }
+
+  // 延迟重启
+  std::this_thread::sleep_for(std::chrono::milliseconds(restart_delay_));
+  
+  RCLCPP_INFO(get_logger(), "尝试重启串口 (%d/%d)", 
+              total_restart_attempts_ + 1, 
+              enable_unlimited_restart_ ? 999 : max_restart_attempts_);
+  
+  // 执行重启
+  init_uart();
+  
+  last_restart_time_ = now;
   total_restart_attempts_++;
   
-  try {
-    // 重启前延迟
-    if (restart_delay_ > 0) {
-      RCLCPP_INFO(get_logger(), "重启前延迟 %d 毫秒...", restart_delay_);
-      std::this_thread::sleep_for(std::chrono::milliseconds(restart_delay_));
-    }
-    
-    // 关闭并重新初始化串口
-    RCLCPP_INFO(get_logger(), "重启串口: %s @ %d", port_name_.c_str(), baudrate_);
-    
-    // 销毁并重新创建UART驱动
-    init_uart();
-    
-    // 检查是否成功
-    if (uart_driver_ && uart_driver_->is_open() && is_healthy_) {
-      // 重启成功，重置状态变量
-      consecutive_failure_count_ = 0;
-      return true;
-    }
-    
-    return false;
-  } catch (const std::exception& e) {
-    RCLCPP_ERROR(get_logger(), "重启串口时发生异常: %s", e.what());
-    return false;
-  }
+  return is_healthy_;
 }
 
-}  // namespace dart_serial
-
+}  // namespace pka
 #include <rclcpp_components/register_node_macro.hpp>
-RCLCPP_COMPONENTS_REGISTER_NODE(dart_serial::UARTNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(pka::UARTNode)

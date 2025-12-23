@@ -3,36 +3,24 @@
 <package format="3">
   <name>dart_detector</name>
   <version>0.0.0</version>
-  <description>The dart_detector package for ROS 2, implementing dart detection with camera/video input.</description>
-  <maintainer email="your_email@example.com">Your Name</maintainer>
-  
+  <description>Dart detection package</description>
+  <maintainer email="your-email@example.com">Your Name</maintainer>
   <license>Apache-2.0</license>
 
-  <!-- 构建工具依赖 -->
   <buildtool_depend>ament_cmake</buildtool_depend>
-  <buildtool_depend>ament_cmake_ros</buildtool_depend>
-
-  <!-- 编译时依赖（新增dart_interface） -->
-  <build_depend>rclcpp</build_depend>
-  <build_depend>sensor_msgs</build_depend>
-  <build_depend>cv_bridge</build_depend>
-  <build_depend>image_transport</build_depend>
-  <build_depend>opencv2</build_depend>
-  <build_depend>rclcpp_components</build_depend>
-  <build_depend>std_srvs</build_depend>
-  <build_depend>dart_interface</build_depend>  <!-- 新增：依赖消息包 -->
-
-  <!-- 运行时依赖（新增dart_interface） -->
-  <exec_depend>rclcpp</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>cv_bridge</exec_depend>
-  <exec_depend>image_transport</exec_depend>
-  <exec_depend>opencv2</exec_depend>
-  <exec_depend>rclcpp_components</exec_depend>
-  <exec_depend>std_srvs</exec_depend>
-  <exec_depend>dart_interface</exec_depend>  <!-- 新增：依赖消息包 -->
-
-  <!-- 测试相关依赖 -->
+  
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
+  <depend>OpenCV</depend>
+  <depend>rclcpp_components</depend>
+  <depend>std_srvs</depend>
+  
+  <!-- 添加这些依赖 -->
+  <depend>dart_interfaces</depend>
+  <depend>dart_utils</depend>
+  
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

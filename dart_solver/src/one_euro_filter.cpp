@@ -1,7 +1,7 @@
 #include "dart_solver/one_euro_filter.hpp"
 #include <cmath>
 
-namespace dart_solver {
+namespace pka {
 
 OneEuroFilter::OneEuroFilter(double freq, double min_cutoff, double beta, double d_cutoff)
     : freq_(freq), min_cutoff_(min_cutoff), beta_(beta), d_cutoff_(d_cutoff),
@@ -55,4 +55,4 @@ void OneEuroFilter::setDCutoff(double d_cutoff) {
     d_cutoff_ = d_cutoff;
 }
 
-}  // namespace dart_solver
+}  // namespace pka

@@ -1,7 +1,7 @@
 #ifndef DART_SOLVER_ONE_EURO_FILTER_HPP_
 #define DART_SOLVER_ONE_EURO_FILTER_HPP_
 
-namespace dart_solver {
+namespace pka {
 
 // 一欧元滤波器实现
 class OneEuroFilter {
@@ -27,6 +27,6 @@ private:
     double alpha(double cutoff);
 };
 
-}  // namespace dart_solver
+}  // namespace pka
 
 #endif  // DART_SOLVER_ONE_EURO_FILTER_HPP_

@@ -3,33 +3,27 @@
 <package format="3">
   <name>dart_solver</name>
   <version>0.0.0</version>
-  <description>Dart solver package for angle calculation and ballistic modeling</description>
+  <description>Dart solver package for yaw angle calculation</description>
   <maintainer email="you@example.com">Your Name</maintainer>
   <license>Apache-2.0</license>
 
   <!-- 构建工具依赖 -->
   <buildtool_depend>ament_cmake</buildtool_depend>
   
-  <!-- 编译时依赖 (仅编译需要，运行时不需要) -->
+  <!-- 编译时依赖 -->
   <build_depend>ament_cmake_gtest</build_depend>
   <build_depend>ament_lint_auto</build_depend>
   <build_depend>ament_lint_common</build_depend>
-  <build_depend>Eigen3</build_depend>  <!-- Eigen是头文件库，仅需编译时依赖 -->
+  <build_depend>Eigen3</build_depend>
 
-  <!-- 编译和运行都需要的依赖 -->
+  <!-- 运行时依赖 -->
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
-  <depend>geometry_msgs</depend>
-  <depend>tf2</depend>
-  <depend>tf2_ros</depend>
   <depend>dart_interfaces</depend>
-  <depend>dart_utils</depend>
-  <depend>OpenCV</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
   </export>
 </package>
-    

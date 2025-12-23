@@ -8,7 +8,7 @@
 #include <cstring>
 #include <rclcpp/rclcpp.hpp>
 
-namespace dart_serial
+namespace pka
 {
 
 class UARTDriver

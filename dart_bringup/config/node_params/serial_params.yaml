@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     # 串口模式设置: 0=关闭, 1=实际串口, 2=虚拟串口
-    serial_mode: 1
+    serial_mode: 2
     
     # 硬件串口参数
     port_name: "/dev/ttyACM0"
@@ -18,9 +18,7 @@
     # 虚拟串口参数
     virtual_serial_frequency: 10.0
     virtual_yaw: 21.67
-    virtual_pitch: 33.08
     virtual_fire_advice: 1
-    virtual_mode: 0
     
     # 串口健康检查和自动重启参数
     enable_auto_restart: true # 是否启用重启

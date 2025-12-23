@@ -1,6 +1,6 @@
 #include "dart_serial/uart_driver.hpp"
 
-namespace dart_serial
+namespace pka
 {
 
 UARTDriver::UARTDriver(const std::string & port_name, int baudrate)

@@ -1,73 +1,95 @@
-cmake_minimum_required(VERSION 3.10)
-project(dart_detector)
+cmake_minimum_required(VERSION 3.8)
+project(dart_serial)
 
-## Use C++17
-set(CMAKE_CXX_STANDARD 17)
+# 明确C++标准
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-## -Wall / -Werror : 把warning全部看成error
-add_definitions(-Wall -Werror -O3)
+# 降低优化级别以减少编译器内存使用
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
 
-## Export compile commands for clangd
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
-#######################
-## Find dependencies ##
-#######################
+# 确保生成器被正确设置
+if(NOT CMAKE_GENERATOR)
+  if(UNIX)
+    set(CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
+  endif()
+endif()
 
+# 查找依赖
 find_package(ament_cmake REQUIRED)
-find_package(ament_cmake_auto REQUIRED)
+find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
-find_package(OpenCV REQUIRED)
-ament_auto_find_build_dependencies()
+find_package(geometry_msgs REQUIRED)
+find_package(dart_interfaces REQUIRED)  
+find_package(dart_utils REQUIRED)
 
-###########
-## Build ##
-###########
-
-ament_auto_add_library(${PROJECT_NAME} SHARED
-  src/detect_method.cpp
-  src/dart_detector_node.cpp
+# 添加库目标（共享库，用于组件化）
+add_library(
+  ${PROJECT_NAME}_lib
+  SHARED
+  src/uart_driver.cpp
+  src/uart_node.cpp
+  src/uart_protocol.cpp
 )
 
-target_link_libraries(${PROJECT_NAME}
-  ${OpenCV_LIBRARIES}
+# 设置头文件包含路径
+target_include_directories(${PROJECT_NAME}_lib
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "dart_detector::DartDetectorNode"
-  EXECUTABLE dart_detector_node
+# 链接依赖的ROS 2库
+ament_target_dependencies(${PROJECT_NAME}_lib
+  rclcpp
+  rclcpp_components
+  geometry_msgs
+  dart_interfaces
+  dart_utils
 )
 
-target_include_directories(${PROJECT_NAME} PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-  ${OpenCV_INCLUDE_DIRS}
+# 链接系统库
+target_link_libraries(${PROJECT_NAME}_lib
+  pthread
+  rt
 )
 
-# 链接消息接口
-rosidl_target_interfaces(${PROJECT_NAME}
-  ${PROJECT_NAME} "rosidl_typesupport_cpp"
+# 注册组件节点
+rclcpp_components_register_nodes(${PROJECT_NAME}_lib "pka::UARTNode")
+
+# 安装库
+install(TARGETS
+  ${PROJECT_NAME}_lib
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
-#############
-## Testing ##
-#############
+# 安装头文件
+install(DIRECTORY
+  include/
+  DESTINATION include
+)
+
+# 导出依赖
+ament_export_include_directories(include)
+ament_export_libraries(${PROJECT_NAME}_lib)
+ament_export_dependencies(
+  rclcpp 
+  rclcpp_components 
+  geometry_msgs 
+  dart_interfaces 
+  dart_utils
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  list(APPEND AMENT_LINT_AUTO_EXCLUDE
-    ament_cmake_copyright
-    ament_cmake_uncrustify
-    ament_cmake_cpplint
-  )
   ament_lint_auto_find_test_dependencies()
 endif()
 
-#############
-## Install ##
-#############
-
-ament_auto_package(
-  INSTALL_TO_SHARE
-)
+ament_package()
+    
