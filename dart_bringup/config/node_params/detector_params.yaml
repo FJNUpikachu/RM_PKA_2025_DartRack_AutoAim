@@ -1,0 +1,21 @@
+/**:
+  ros__parameters:
+
+    image_topic: "image_raw"
+
+    model_path: "/home/kevin/RM_PKA_2026_DartRack_AutoAim-main/src/dart_lighttrain/best.onnx"
+
+    class_names: ["light"]
+
+    input_width: 640
+    input_height: 640
+
+    conf_threshold: 0.25
+    iou_threshold: 0.45
+
+    use_cuda: false
+    enable_debug: true
+
+    # ===== 防抖 =====
+    max_jump_px: 40.0
+    smooth_alpha: 0.6

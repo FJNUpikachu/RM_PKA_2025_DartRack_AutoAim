@@ -1,0 +1,1 @@
+# 记得改dart_watch_dog.sh里面的HOME_DIR

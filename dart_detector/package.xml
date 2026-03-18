@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>dart_detector</name>
+  <version>0.0.1</version>
+  <description>Neural-network-based dart detector component.</description>
+
+  <maintainer email="826716800@qq.com">you</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>image_transport</depend>
+  <depend>cv_bridge</depend>
+  <depend>dart_interfaces</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

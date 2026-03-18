@@ -1,0 +1,4 @@
+# 请求消息（空，因为只需要获取当前状态）
+---
+# 响应消息
+uint8 state  # 0:NOT_START 1: NOT_AIMING, 2: AIMING, 3: AIMED

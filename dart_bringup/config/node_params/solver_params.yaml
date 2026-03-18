@@ -1,0 +1,17 @@
+/**:
+  ros__parameters:
+    # 图像尺寸（用于计算中心点）
+    image:
+      width: 800.0     # 图像宽度
+      height: 640.0    # 图像高度
+    
+    # 滤波器参数
+    filter:
+      enable: true          # 是否启用滤波器
+      freq: 30.0            # 滤波器频率(Hz)
+      min_cutoff: 1.0       # 最小截止频率(Hz)
+      beta: 0.5             # 速度系数
+    
+    # 发射判断参数
+    fire:
+      yaw_threshold: 0.2    # yaw角度阈值(度)
