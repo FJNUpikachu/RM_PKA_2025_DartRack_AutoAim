@@ -283,9 +283,6 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
       const cv::Point raw_det_center(
         static_cast<int>(raw_center_x),
         static_cast<int>(raw_center_y));
-      const cv::Point filtered_det_center(
-        static_cast<int>(center_x),
-        static_cast<int>(center_y));
 
       // FPS
       static auto last_time = std::chrono::steady_clock::now();
@@ -355,28 +352,20 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
           cv::Scalar(255, 0, 0),
           -1);
 
-        // 输出中心（黄点）
-        cv::circle(
-          vis,
-          filtered_det_center,
-          6,
-          cv::Scalar(0, 255, 255),
-          -1);
-
-        // 连线：中心到当前输出
+        // 连线：图像中心直接连到原始检测中心（蓝点）
         cv::line(
           vis,
           img_center,
-          filtered_det_center,
+          raw_det_center,
           cv::Scalar(0, 255, 0),
           2);
 
-        const int dx = filtered_det_center.x - img_cx;
-        const int dy = filtered_det_center.y - img_cy;
+        const int dx = raw_det_center.x - img_cx;
+        const int dy = raw_det_center.y - img_cy;
 
         cv::putText(
           vis,
-          "x: " + std::to_string(filtered_det_center.x),
+          "x: " + std::to_string(raw_det_center.x),
           cv::Point(10, 30),
           cv::FONT_HERSHEY_SIMPLEX,
           0.7,
@@ -385,7 +374,7 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
 
         cv::putText(
           vis,
-          "y: " + std::to_string(filtered_det_center.y),
+          "y: " + std::to_string(raw_det_center.y),
           cv::Point(10, 60),
           cv::FONT_HERSHEY_SIMPLEX,
           0.7,
