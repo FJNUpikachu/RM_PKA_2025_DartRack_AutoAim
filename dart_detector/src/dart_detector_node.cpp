@@ -169,34 +169,84 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
     return;
   }
 
+  const int img_cx = image.cols / 2;
+  const int img_cy = image.rows / 2;
+
   float center_x = last_x_;
   float center_y = last_y_;
+  float raw_center_x = last_x_;
+  float raw_center_y = last_y_;
   bool detected = false;
+
+  // 调试显示用
+  std::string track_mode = "LOST";
+  double adaptive_jump = max_jump_px_;
+  double used_alpha_x = smooth_alpha_;
 
   if (!detections.empty()) {
     const auto & d = detections.front();
 
     float new_x = static_cast<float>(d.box.x + d.box.width * 0.5f);
     float new_y = static_cast<float>(d.box.y + d.box.height * 0.5f);
+    raw_center_x = new_x;
+    raw_center_y = new_y;
 
-    // 跳变限制
+    // ===== 只按 x 方向判断 =====
+    const float dx_center = new_x - static_cast<float>(img_cx);
+    const float abs_dx = std::abs(dx_center);
+
+    // x方向状态切换
+    if (abs_dx > 80.0f) {
+      track_mode = "TRACKING";
+      adaptive_jump = std::max(max_jump_px_, 220.0);
+      used_alpha_x = 0.85;   // 快速跟随
+    } else if (abs_dx > 5.0f) {
+      track_mode = "ALIGNING";
+      adaptive_jump = std::max(max_jump_px_, 100.0);
+      used_alpha_x = 0.55;   // 明显减速，准备贴线
+    } else {
+      track_mode = "LOCKED";
+      adaptive_jump = std::max(10.0, max_jump_px_ * 0.25);
+      used_alpha_x = 0.12;   // 慢慢贴中线，不做硬吸附
+    }
+
     if (has_last_) {
-      if (std::abs(new_x - last_x_) > max_jump_px_ ||
-          std::abs(new_y - last_y_) > max_jump_px_) {
+      // 只对 x 跳变做约束
+      const float jump_x = new_x - last_x_;
+      const float abs_jump_x = std::abs(jump_x);
+
+      // LOCKED 下，如果 x 跳变异常大，进行更强的软融合
+      if (abs_jump_x > adaptive_jump) {
         if (enable_debug_) {
-          RCLCPP_WARN(get_logger(), "检测中心跳变过大，本帧采用上一帧位置");
+          RCLCPP_WARN(
+            get_logger(),
+            "x方向跳变较大(%.1fpx > %.1fpx)，采用软融合抑制",
+            abs_jump_x,
+            adaptive_jump);
         }
-        new_x = last_x_;
-        new_y = last_y_;
+
+        // TRACKING 阶段允许更多响应，LOCKED 阶段更保守
+        if (track_mode == "TRACKING") {
+          new_x = static_cast<float>(0.35 * new_x + 0.65 * last_x_);
+        } else if (track_mode == "ALIGNING") {
+          new_x = static_cast<float>(0.25 * new_x + 0.75 * last_x_);
+        } else {
+          new_x = static_cast<float>(0.15 * new_x + 0.85 * last_x_);
+        }
       }
     }
 
-    // 平滑
+    // x方向：按状态机 alpha 平滑，LOCK 后慢慢贴中线
     if (has_last_) {
-      center_x = static_cast<float>(smooth_alpha_ * new_x + (1.0 - smooth_alpha_) * last_x_);
-      center_y = static_cast<float>(smooth_alpha_ * new_y + (1.0 - smooth_alpha_) * last_y_);
+      center_x = static_cast<float>(used_alpha_x * new_x + (1.0 - used_alpha_x) * last_x_);
     } else {
       center_x = new_x;
+    }
+
+    // y方向：只做普通平滑显示，不参与状态判定
+    if (has_last_) {
+      center_y = static_cast<float>(smooth_alpha_ * new_y + (1.0 - smooth_alpha_) * last_y_);
+    } else {
       center_y = new_y;
     }
 
@@ -229,14 +279,15 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
     try {
       cv::Mat vis = image.clone();
 
-      const int img_cx = vis.cols / 2;
-      const int img_cy = vis.rows / 2;
       const cv::Point img_center(img_cx, img_cy);
-      const cv::Point det_center(
+      const cv::Point raw_det_center(
+        static_cast<int>(raw_center_x),
+        static_cast<int>(raw_center_y));
+      const cv::Point filtered_det_center(
         static_cast<int>(center_x),
         static_cast<int>(center_y));
 
-      // ===== FPS 计算 =====
+      // FPS
       static auto last_time = std::chrono::steady_clock::now();
       static double fps = 0.0;
       auto now = std::chrono::steady_clock::now();
@@ -246,7 +297,7 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
       }
       last_time = now;
 
-      // 画整幅图中心十字线
+      // 中心十字线
       cv::line(
         vis,
         cv::Point(img_cx, 0),
@@ -270,7 +321,6 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
         cv::Scalar(0, 255, 255),
         2);
 
-      // 右上角 FPS
       cv::putText(
         vis,
         "FPS: " + cv::format("%.0f", fps),
@@ -283,8 +333,10 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
       if (detected) {
         const auto & d = detections.front();
 
+        // 检测框
         cv::rectangle(vis, d.box, cv::Scalar(0, 0, 255), 2);
 
+        // 标签
         std::string label = d.class_name + " " + cv::format("%.2f", d.score);
         cv::putText(
           vis,
@@ -295,26 +347,36 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
           cv::Scalar(0, 0, 255),
           2);
 
+        // 原始检测中心（蓝点）
         cv::circle(
           vis,
-          det_center,
-          5,
+          raw_det_center,
+          4,
+          cv::Scalar(255, 0, 0),
+          -1);
+
+        // 输出中心（黄点）
+        cv::circle(
+          vis,
+          filtered_det_center,
+          6,
           cv::Scalar(0, 255, 255),
           -1);
 
+        // 连线：中心到当前输出
         cv::line(
           vis,
           img_center,
-          det_center,
+          filtered_det_center,
           cv::Scalar(0, 255, 0),
           2);
 
-        const int dx = det_center.x - img_cx;
-        const int dy = det_center.y - img_cy;
+        const int dx = filtered_det_center.x - img_cx;
+        const int dy = filtered_det_center.y - img_cy;
 
         cv::putText(
           vis,
-          "x: " + std::to_string(det_center.x),
+          "x: " + std::to_string(filtered_det_center.x),
           cv::Point(10, 30),
           cv::FONT_HERSHEY_SIMPLEX,
           0.7,
@@ -323,7 +385,7 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
 
         cv::putText(
           vis,
-          "y: " + std::to_string(det_center.y),
+          "y: " + std::to_string(filtered_det_center.y),
           cv::Point(10, 60),
           cv::FONT_HERSHEY_SIMPLEX,
           0.7,
@@ -346,6 +408,33 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
           cv::FONT_HERSHEY_SIMPLEX,
           0.7,
           cv::Scalar(0, 255, 255),
+          2);
+
+        cv::putText(
+          vis,
+          "mode: " + track_mode,
+          cv::Point(10, 150),
+          cv::FONT_HERSHEY_SIMPLEX,
+          0.7,
+          cv::Scalar(0, 255, 0),
+          2);
+
+        cv::putText(
+          vis,
+          "jump_th_x: " + cv::format("%.0f", adaptive_jump),
+          cv::Point(10, 180),
+          cv::FONT_HERSHEY_SIMPLEX,
+          0.7,
+          cv::Scalar(0, 255, 0),
+          2);
+
+        cv::putText(
+          vis,
+          "alpha_x: " + cv::format("%.2f", used_alpha_x),
+          cv::Point(10, 210),
+          cv::FONT_HERSHEY_SIMPLEX,
+          0.7,
+          cv::Scalar(0, 255, 0),
           2);
       } else {
         cv::putText(
