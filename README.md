@@ -47,11 +47,6 @@
 由于Ubuntu 22.04内核版本为6.5.0，需要导入Ubuntu20.04仓库源下载5.11.0版内核
 
   ```bash
-  
-  ```
-
-
-  ```bash
   chmod +x MVviewer_Ver2.3.1_Linux_x86_Build20210926.run 
   sudo ./MVviewer_Ver2.3.1_Linux_x86_Build20210926.run
   ```
