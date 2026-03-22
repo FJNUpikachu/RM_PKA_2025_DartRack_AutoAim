@@ -1,15 +1,12 @@
-# 【施工中！】
-
 # Pikachu战队2026 DartTrack Vision Project
 
- 本项目为福建师范大学Pikachu战队2025赛季飞镖镖架制导视觉部分。
+ 本项目为福建师范大学Pikachu战队2026赛季飞镖镖架制导视觉部分，
+ 本项目基于PKA战队2025赛季飞镖制导视觉部分编写。
 
 
 ## 一、项目结构
 
 ```
-.
-│
 ├── dart_detector : 识别部分
 |
 ├── dart_solver : 解算部分
@@ -70,6 +67,20 @@
   ```
 安装时注意换源。
 如此前安装过大华相机驱动，此时也可把旧源一起清理掉。
+
+##### onnxruntime安装
+
+ ```bash
+cd ~
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-linux-x64-1.17.1.tgz
+tar -xzf onnxruntime-linux-x64-1.17.1.tgz
+sudo mv onnxruntime-linux-x64-1.17.1 /opt/onnxruntime
+ ```
+
+更新一下库
+ ```bash
+sudo ldconfig
+ ```
 
 ## 三、编译与运行
 

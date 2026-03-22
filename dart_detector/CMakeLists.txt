@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.8)
 project(dart_detector)
 
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
-endif()
-
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
+
+# ======================
+# ROS2
+# ======================
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -19,48 +19,65 @@ find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(dart_interfaces REQUIRED)
 
+# ======================
+# ONNX Runtime 手动路径
+# ======================
+
+set(ONNXRUNTIME_ROOT /opt/onnxruntime)
+
 include_directories(
   include
   ${OpenCV_INCLUDE_DIRS}
+  ${ONNXRUNTIME_ROOT}/include
 )
 
-add_library(${PROJECT_NAME}_component SHARED
+link_directories(
+  ${ONNXRUNTIME_ROOT}/lib
+)
+
+# ======================
+# library
+# ======================
+
+add_library(${PROJECT_NAME} SHARED
   src/dart_detector_node.cpp
   src/onnx_detector.cpp
 )
 
-ament_target_dependencies(${PROJECT_NAME}_component
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
+
+ament_target_dependencies(${PROJECT_NAME}
   rclcpp
   rclcpp_components
   sensor_msgs
   std_msgs
   image_transport
   cv_bridge
+  OpenCV
   dart_interfaces
 )
 
-target_link_libraries(${PROJECT_NAME}_component
-  ${OpenCV_LIBS}
+target_link_libraries(${PROJECT_NAME}
+  onnxruntime
 )
 
-target_compile_definitions(${PROJECT_NAME}_component
-  PRIVATE "COMPOSITION_BUILDING_DLL"
+rclcpp_components_register_nodes(
+  ${PROJECT_NAME}
+  "pka::DartDetectorNode"
 )
 
-rclcpp_components_register_nodes(${PROJECT_NAME}_component "pka::DartDetectorNode")
-
-install(TARGETS
-  ${PROJECT_NAME}_component
-  ARCHIVE DESTINATION lib
+install(
+  TARGETS ${PROJECT_NAME}
   LIBRARY DESTINATION lib
-  RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY include/
-  DESTINATION include
+install(
+  DIRECTORY include/
+  DESTINATION include/
 )
 
-install(DIRECTORY config
+install(
+  DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
 )
 

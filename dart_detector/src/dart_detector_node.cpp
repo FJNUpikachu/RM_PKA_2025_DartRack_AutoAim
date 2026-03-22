@@ -3,6 +3,7 @@
 #include "sensor_msgs/image_encodings.hpp"
 #include <chrono>
 #include <cmath>
+#include <exception>
 
 namespace pka
 {
@@ -18,17 +19,27 @@ DartDetectorNode::DartDetectorNode(const rclcpp::NodeOptions & options)
   declareParameters();
   readParameters();
 
-
-  if (!detector_.init(
-      model_path_,
-      class_names_,
-      input_width_,
-      input_height_,
-      conf_threshold_,
-      iou_threshold_))
-  {
-    RCLCPP_FATAL(get_logger(), "ONNX模型加载失败");
-    throw std::runtime_error("Detector init failed");
+  try {
+    if (!detector_.init(
+        model_path_,
+        class_names_,
+        input_width_,
+        input_height_,
+        conf_threshold_,
+        iou_threshold_))
+    {
+      RCLCPP_FATAL(get_logger(), "ONNX模型加载失败");
+      throw std::runtime_error("Detector init failed");
+    }
+  } catch (const cv::Exception & e) {
+    RCLCPP_FATAL(get_logger(), "OpenCV 初始化 detector 失败: %s", e.what());
+    throw;
+  } catch (const std::exception & e) {
+    RCLCPP_FATAL(get_logger(), "detector 初始化失败: %s", e.what());
+    throw;
+  } catch (...) {
+    RCLCPP_FATAL(get_logger(), "detector 初始化失败: 未知异常");
+    throw;
   }
 
   if (use_cuda_) {
@@ -124,6 +135,9 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
   }
 
   if (image.empty()) {
+    if (enable_debug_) {
+      RCLCPP_WARN(get_logger(), "收到空图像，跳过本帧");
+    }
     return;
   }
 
@@ -137,7 +151,23 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
     has_printed_image_size_ = true;
   }
 
-  auto detections = detector_.infer(image);
+  if (image_transport_initialized_) {
+    publishImage(raw_image_pub_, image, msg->header.stamp, "bgr8");
+  }
+
+  std::vector<Detection> detections;
+  try {
+    detections = detector_.infer(image);
+  } catch (const cv::Exception & e) {
+    RCLCPP_ERROR(get_logger(), "OpenCV DNN 推理失败: %s", e.what());
+    return;
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(get_logger(), "detector 推理失败: %s", e.what());
+    return;
+  } catch (...) {
+    RCLCPP_ERROR(get_logger(), "detector 推理失败: 未知异常");
+    return;
+  }
 
   float center_x = last_x_;
   float center_y = last_y_;
@@ -188,34 +218,152 @@ void DartDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
   out.header.stamp = msg->header.stamp;
   out.header.frame_id = msg->header.frame_id.empty() ? "camera" : msg->header.frame_id;
 
-  light_pub_->publish(out);
+  try {
+    light_pub_->publish(out);
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(get_logger(), "发布 light_position 失败: %s", e.what());
+    return;
+  }
 
   if (image_transport_initialized_) {
-    cv::Mat vis = image.clone();
+    try {
+      cv::Mat vis = image.clone();
 
-    if (detected) {
-      const auto & d = detections.front();
-      cv::rectangle(vis, d.box, cv::Scalar(0, 0, 255), 2);
+      const int img_cx = vis.cols / 2;
+      const int img_cy = vis.rows / 2;
+      const cv::Point img_center(img_cx, img_cy);
+      const cv::Point det_center(
+        static_cast<int>(center_x),
+        static_cast<int>(center_y));
 
-      std::string label = d.class_name + " " + cv::format("%.2f", d.score);
-      cv::putText(
+      // ===== FPS 计算 =====
+      static auto last_time = std::chrono::steady_clock::now();
+      static double fps = 0.0;
+      auto now = std::chrono::steady_clock::now();
+      double dt = std::chrono::duration<double>(now - last_time).count();
+      if (dt > 1e-6) {
+        fps = 1.0 / dt;
+      }
+      last_time = now;
+
+      // 画整幅图中心十字线
+      cv::line(
         vis,
-        label,
-        cv::Point(d.box.x, std::max(0, d.box.y - 5)),
-        cv::FONT_HERSHEY_SIMPLEX,
-        0.6,
+        cv::Point(img_cx, 0),
+        cv::Point(img_cx, vis.rows - 1),
         cv::Scalar(0, 0, 255),
         2);
+
+      cv::line(
+        vis,
+        cv::Point(0, img_cy),
+        cv::Point(vis.cols - 1, img_cy),
+        cv::Scalar(0, 0, 255),
+        2);
+
+      cv::putText(
+        vis,
+        "Center",
+        cv::Point(std::min(img_cx + 8, vis.cols - 80), std::max(img_cy - 8, 20)),
+        cv::FONT_HERSHEY_SIMPLEX,
+        0.6,
+        cv::Scalar(0, 255, 255),
+        2);
+
+      // 右上角 FPS
+      cv::putText(
+        vis,
+        "FPS: " + cv::format("%.0f", fps),
+        cv::Point(std::max(10, vis.cols - 110), 30),
+        cv::FONT_HERSHEY_SIMPLEX,
+        0.7,
+        cv::Scalar(255, 255, 255),
+        2);
+
+      if (detected) {
+        const auto & d = detections.front();
+
+        cv::rectangle(vis, d.box, cv::Scalar(0, 0, 255), 2);
+
+        std::string label = d.class_name + " " + cv::format("%.2f", d.score);
+        cv::putText(
+          vis,
+          label,
+          cv::Point(d.box.x, std::max(0, d.box.y - 5)),
+          cv::FONT_HERSHEY_SIMPLEX,
+          0.6,
+          cv::Scalar(0, 0, 255),
+          2);
+
+        cv::circle(
+          vis,
+          det_center,
+          5,
+          cv::Scalar(0, 255, 255),
+          -1);
+
+        cv::line(
+          vis,
+          img_center,
+          det_center,
+          cv::Scalar(0, 255, 0),
+          2);
+
+        const int dx = det_center.x - img_cx;
+        const int dy = det_center.y - img_cy;
+
+        cv::putText(
+          vis,
+          "x: " + std::to_string(det_center.x),
+          cv::Point(10, 30),
+          cv::FONT_HERSHEY_SIMPLEX,
+          0.7,
+          cv::Scalar(255, 255, 255),
+          2);
+
+        cv::putText(
+          vis,
+          "y: " + std::to_string(det_center.y),
+          cv::Point(10, 60),
+          cv::FONT_HERSHEY_SIMPLEX,
+          0.7,
+          cv::Scalar(255, 255, 255),
+          2);
+
+        cv::putText(
+          vis,
+          "dx: " + std::to_string(dx),
+          cv::Point(10, 90),
+          cv::FONT_HERSHEY_SIMPLEX,
+          0.7,
+          cv::Scalar(0, 255, 255),
+          2);
+
+        cv::putText(
+          vis,
+          "dy: " + std::to_string(dy),
+          cv::Point(10, 120),
+          cv::FONT_HERSHEY_SIMPLEX,
+          0.7,
+          cv::Scalar(0, 255, 255),
+          2);
+      } else {
+        cv::putText(
+          vis,
+          "Not Detected",
+          cv::Point(10, 30),
+          cv::FONT_HERSHEY_SIMPLEX,
+          0.9,
+          cv::Scalar(0, 0, 255),
+          2);
+      }
+
+      publishImage(result_image_pub_, vis, msg->header.stamp, "bgr8");
+    } catch (const cv::Exception & e) {
+      RCLCPP_ERROR(get_logger(), "可视化绘制失败: %s", e.what());
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(get_logger(), "结果图发布失败: %s", e.what());
     }
-
-    cv::circle(
-      vis,
-      cv::Point(static_cast<int>(center_x), static_cast<int>(center_y)),
-      5,
-      cv::Scalar(0, 255, 255),
-      -1);
-
-    publishImage(result_image_pub_, vis, msg->header.stamp, "bgr8");
   }
 }
 

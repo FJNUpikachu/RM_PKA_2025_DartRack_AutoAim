@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <iostream>
+#include <stdexcept>
 
 namespace pka
 {
+
+OnnxDetector::OnnxDetector() = default;
 
 bool OnnxDetector::init(
   const std::string & model_path,
@@ -21,23 +24,43 @@ bool OnnxDetector::init(
   iou_threshold_ = iou_threshold;
 
   try {
-    net_ = cv::dnn::readNet(model_path);
+    env_ = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "dart_detector");
+    session_options_ = std::make_unique<Ort::SessionOptions>();
+
+    session_options_->SetIntraOpNumThreads(1);
+    session_options_->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+
+    session_ = std::make_unique<Ort::Session>(
+      *env_, model_path.c_str(), *session_options_);
+
+    Ort::AllocatorWithDefaultOptions allocator;
+
+    {
+      auto input_name_alloc = session_->GetInputNameAllocated(0, allocator);
+      input_name_ = input_name_alloc.get();
+    }
+
+    {
+      auto output_name_alloc = session_->GetOutputNameAllocated(0, allocator);
+      output_name_ = output_name_alloc.get();
+    }
+
+    initialized_ = true;
+    return true;
+  } catch (const Ort::Exception & e) {
+    std::cerr << "Failed to initialize ONNX Runtime session: " << e.what() << std::endl;
+    initialized_ = false;
+    return false;
   } catch (const std::exception & e) {
-    std::cerr << "Failed to load ONNX model: " << e.what() << std::endl;
+    std::cerr << "Failed to initialize detector: " << e.what() << std::endl;
+    initialized_ = false;
     return false;
   }
-
-  // 固定 CPU 推理
-  net_.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-  net_.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-
-  initialized_ = true;
-  return true;
 }
 
 cv::Mat OnnxDetector::preprocess(
   const cv::Mat & image,
-  cv::Mat & blob,
+  std::vector<float> & input_tensor_values,
   float & scale_x,
   float & scale_y) const
 {
@@ -47,13 +70,24 @@ cv::Mat OnnxDetector::preprocess(
   scale_x = static_cast<float>(image.cols) / static_cast<float>(input_width_);
   scale_y = static_cast<float>(image.rows) / static_cast<float>(input_height_);
 
-  blob = cv::dnn::blobFromImage(
-    resized,
-    1.0 / 255.0,
-    cv::Size(input_width_, input_height_),
-    cv::Scalar(),
-    true,
-    false);
+  cv::Mat rgb;
+  cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
+
+  rgb.convertTo(rgb, CV_32F, 1.0 / 255.0);
+
+  input_tensor_values.resize(1 * 3 * input_height_ * input_width_);
+
+  // HWC -> CHW
+  std::vector<cv::Mat> channels(3);
+  cv::split(rgb, channels);
+
+  const int channel_size = input_height_ * input_width_;
+  for (int c = 0; c < 3; ++c) {
+    std::memcpy(
+      input_tensor_values.data() + c * channel_size,
+      channels[c].data,
+      channel_size * sizeof(float));
+  }
 
   return resized;
 }
@@ -65,69 +99,79 @@ std::vector<Detection> OnnxDetector::infer(const cv::Mat & image)
     return detections;
   }
 
-  cv::Mat blob;
+  std::vector<float> input_tensor_values;
   float scale_x = 1.0f;
   float scale_y = 1.0f;
-  preprocess(image, blob, scale_x, scale_y);
+  preprocess(image, input_tensor_values, scale_x, scale_y);
 
-  net_.setInput(blob);
+  std::vector<int64_t> input_shape = {1, 3, input_height_, input_width_};
 
-  std::vector<cv::Mat> outputs;
-  net_.forward(outputs, net_.getUnconnectedOutLayersNames());
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(
+    OrtArenaAllocator, OrtMemTypeDefault);
 
-  return postprocess(image, outputs, scale_x, scale_y);
+  Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+    memory_info,
+    input_tensor_values.data(),
+    input_tensor_values.size(),
+    input_shape.data(),
+    input_shape.size());
+
+  const char * input_names[] = {input_name_.c_str()};
+  const char * output_names[] = {output_name_.c_str()};
+
+  auto output_tensors = session_->Run(
+    Ort::RunOptions{nullptr},
+    input_names,
+    &input_tensor,
+    1,
+    output_names,
+    1);
+
+  if (output_tensors.empty()) {
+    return detections;
+  }
+
+  auto & output_tensor = output_tensors[0];
+  auto type_info = output_tensor.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = type_info.GetShape();
+  const float * output_data = output_tensor.GetTensorData<float>();
+
+  return postprocess(image, output_data, output_shape, scale_x, scale_y);
 }
 
 std::vector<Detection> OnnxDetector::postprocess(
   const cv::Mat & image,
-  const std::vector<cv::Mat> & outputs,
+  const float * output_data,
+  const std::vector<int64_t> & output_shape,
   float scale_x,
   float scale_y) const
 {
   std::vector<Detection> detections;
 
-  if (outputs.empty()) {
-    std::cerr << "[OnnxDetector] outputs is empty." << std::endl;
+  if (output_data == nullptr || output_shape.empty()) {
+    std::cerr << "[OnnxDetector] output is empty." << std::endl;
     return detections;
   }
 
-  cv::Mat output = outputs[0];
-
-  // 兼容 Ultralytics 常见 ONNX 输出:
-  // 例如:
-  // [1, 5, 8400]   单类别
-  // [1, 84, 8400]  多类别
-  // 转成 [8400, 5] 或 [8400, 84]
-  if (output.dims == 3) {
-    int dim0 = output.size[0];
-    int dim1 = output.size[1];
-    int dim2 = output.size[2];
-
-    if (dim0 != 1) {
-      std::cerr << "[OnnxDetector] Unexpected batch size: " << dim0 << std::endl;
-      return detections;
-    }
-
-    cv::Mat output_2d = output.reshape(1, dim1);  // [dim1, dim2]
-    cv::transpose(output_2d, output);             // [dim2, dim1]
-
-    (void)dim2;
-  } else if (output.dims != 2) {
-    std::cerr << "[OnnxDetector] Unsupported output dims: " << output.dims << std::endl;
+  if (output_shape.size() != 3) {
+    std::cerr << "[OnnxDetector] Unsupported output shape rank: "
+              << output_shape.size() << std::endl;
     return detections;
   }
 
-  if (output.empty()) {
-    std::cerr << "[OnnxDetector] output is empty after reshape." << std::endl;
+  // 常见 Ultralytics 导出:
+  // [1, 5, 8400] 或 [1, 84, 8400]
+  const int64_t batch = output_shape[0];
+  const int64_t dim1 = output_shape[1];
+  const int64_t dim2 = output_shape[2];
+
+  if (batch != 1) {
+    std::cerr << "[OnnxDetector] Unexpected batch size: " << batch << std::endl;
     return detections;
   }
 
-  std::vector<int> class_ids;
-  std::vector<float> scores;
-  std::vector<cv::Rect> boxes;
-
-  const int rows = output.rows;
-  const int dims = output.cols;
+  const int rows = static_cast<int>(dim2);
+  const int dims = static_cast<int>(dim1);
 
   if (dims < 5) {
     std::cerr << "[OnnxDetector] Invalid output dims: " << dims << std::endl;
@@ -136,30 +180,35 @@ std::vector<Detection> OnnxDetector::postprocess(
 
   const int num_classes = dims - 4;
 
-  for (int i = 0; i < rows; ++i) {
-    const float * data = output.ptr<float>(i);
+  std::vector<int> class_ids;
+  std::vector<float> scores;
+  std::vector<cv::Rect> boxes;
 
-    float cx = data[0];
-    float cy = data[1];
-    float w  = data[2];
-    float h  = data[3];
+  for (int i = 0; i < rows; ++i) {
+    // 原始布局是 [1, dims, rows]
+    auto get_val = [&](int d) -> float {
+      return output_data[d * rows + i];
+    };
+
+    float cx = get_val(0);
+    float cy = get_val(1);
+    float w  = get_val(2);
+    float h  = get_val(3);
 
     int class_id = -1;
     float conf = 0.0f;
 
     if (num_classes == 1) {
-      // 单类别，data[4] 直接当置信度
-      conf = data[4];
+      conf = get_val(4);
       class_id = 0;
     } else {
-      // 多类别，从 data[4] 开始找最大类别分数
-      cv::Mat scores_mat(1, num_classes, CV_32FC1, (void *)(data + 4));
-      cv::Point class_id_point;
-      double max_class_score = 0.0;
-      cv::minMaxLoc(scores_mat, nullptr, &max_class_score, nullptr, &class_id_point);
-
-      conf = static_cast<float>(max_class_score);
-      class_id = class_id_point.x;
+      for (int c = 0; c < num_classes; ++c) {
+        float score = get_val(4 + c);
+        if (score > conf) {
+          conf = score;
+          class_id = c;
+        }
+      }
     }
 
     if (conf < conf_threshold_) {

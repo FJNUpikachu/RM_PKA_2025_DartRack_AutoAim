@@ -3,7 +3,7 @@
 
     image_topic: "image_raw"
 
-    model_path: "/home/kevin/RM_PKA_2026_DartRack_AutoAim-main/src/dart_lighttrain/best.onnx"
+    model_path: "/home/pka/RM_PKA_2026_DartRack_AutoAim-main/src/dart_lighttrain/best.onnx"
 
     class_names: ["light"]
 

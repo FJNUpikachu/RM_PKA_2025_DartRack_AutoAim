@@ -3,8 +3,8 @@
     camera_info_url: package://dart_bringup/config/dahua_camera_info.yaml
     # exposure_time: 3000.0
     # gain: 15.0
-    exposure_time: 1.0
-    gain: 1.0
+    exposure_time: 500.0
+    gain: 10.0
     auto_white_balance: 1
     resolution_width: 800
     resolution_height: 600

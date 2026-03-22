@@ -2,13 +2,14 @@
 <package format="3">
   <name>dart_detector</name>
   <version>0.0.1</version>
-  <description>Neural-network-based dart detector component.</description>
+  <description>Dart detector component using ONNX Runtime</description>
 
-  <maintainer email="826716800@qq.com">you</maintainer>
-  <license>MIT</license>
+  <maintainer email="you@example.com">you</maintainer>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <!-- ROS2 基础依赖 -->
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
@@ -16,6 +17,13 @@
   <depend>image_transport</depend>
   <depend>cv_bridge</depend>
   <depend>dart_interfaces</depend>
+
+  <!-- OpenCV -->
+  <depend>opencv</depend>
+
+  <!-- 运行时/构建时系统库 -->
+  <build_depend>pkg-config</build_depend>
+  <exec_depend>pkg-config</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
