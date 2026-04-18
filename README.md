@@ -67,9 +67,9 @@
 
  ```bash
 cd ~
-wget https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-linux-x64-1.17.1.tgz
-tar -xzf onnxruntime-linux-x64-1.17.1.tgz
-sudo mv onnxruntime-linux-x64-1.17.1 /opt/onnxruntime
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz
+tar -xzf onnxruntime-linux-x64-1.24.4.tgz
+sudo mv onnxruntime-linux-x64-1.24.4 /opt/onnxruntime
  ```
 
 更新一下库

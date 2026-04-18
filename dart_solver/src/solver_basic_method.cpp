@@ -1,4 +1,4 @@
-#include "dart_solver/solver_method.hpp"
+#include "dart_solver/solver_basic_method.hpp"
 #include <cmath>
 
 namespace pka {
@@ -10,27 +10,18 @@ void SolverMethod::updateParameters(const SolverParameters& params) {
 }
 
 double SolverMethod::calculateYawAngle(double x_pixel) {
-    // 计算图像中心点x坐标
     double image_center_x = params_.image_width / 2.0;
-    
-    // 计算像素坐标系下的x方向差值（相对于图像中心）
     double x_diff = x_pixel - image_center_x;
-    
-    // 将像素差值转换为角度（弧度）
-    double yaw_rad = atan2(x_diff, params_.fx);
-    
-    // 转换为度
-    double yaw_deg = yaw_rad * 180.0 / M_PI;
-    
+    double yaw_rad = std::atan2(x_diff, params_.fx);
+    double yaw_deg = yaw_rad * 180.0 / std::acos(-1.0);
     return yaw_deg;
 }
 
 uint8_t SolverMethod::determineFireAdvice(double yaw_angle) {
-    // 判断yaw角度绝对值是否在阈值范围内
     if (std::abs(yaw_angle) <= params_.yaw_threshold) {
-        return 1;  // 可发射
+        return 1;
     }
-    return 0;  // 不可发射
+    return 0;
 }
 
 }  // namespace pka

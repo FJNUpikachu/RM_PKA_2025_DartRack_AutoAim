@@ -1,6 +1,7 @@
 #include "dart_detector/onnx_detector.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 
@@ -27,7 +28,8 @@ bool OnnxDetector::init(
     env_ = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "dart_detector");
     session_options_ = std::make_unique<Ort::SessionOptions>();
 
-    session_options_->SetIntraOpNumThreads(1);
+    // 使用 4 线程 CPU 推理
+    session_options_->SetIntraOpNumThreads(4);
     session_options_->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
 
     session_ = std::make_unique<Ort::Session>(
@@ -67,12 +69,12 @@ cv::Mat OnnxDetector::preprocess(
   cv::Mat resized;
   cv::resize(image, resized, cv::Size(input_width_, input_height_));
 
+  // 记录从网络输入坐标映射回原图坐标所需的比例
   scale_x = static_cast<float>(image.cols) / static_cast<float>(input_width_);
   scale_y = static_cast<float>(image.rows) / static_cast<float>(input_height_);
 
   cv::Mat rgb;
   cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
-
   rgb.convertTo(rgb, CV_32F, 1.0 / 255.0);
 
   input_tensor_values.resize(1 * 3 * input_height_ * input_width_);
@@ -149,24 +151,18 @@ std::vector<Detection> OnnxDetector::postprocess(
   std::vector<Detection> detections;
 
   if (output_data == nullptr || output_shape.empty()) {
-    std::cerr << "[OnnxDetector] output is empty." << std::endl;
     return detections;
   }
 
   if (output_shape.size() != 3) {
-    std::cerr << "[OnnxDetector] Unsupported output shape rank: "
-              << output_shape.size() << std::endl;
     return detections;
   }
 
-  // 常见 Ultralytics 导出:
-  // [1, 5, 8400] 或 [1, 84, 8400]
   const int64_t batch = output_shape[0];
   const int64_t dim1 = output_shape[1];
   const int64_t dim2 = output_shape[2];
 
   if (batch != 1) {
-    std::cerr << "[OnnxDetector] Unexpected batch size: " << batch << std::endl;
     return detections;
   }
 
@@ -174,7 +170,6 @@ std::vector<Detection> OnnxDetector::postprocess(
   const int dims = static_cast<int>(dim1);
 
   if (dims < 5) {
-    std::cerr << "[OnnxDetector] Invalid output dims: " << dims << std::endl;
     return detections;
   }
 
@@ -182,18 +177,22 @@ std::vector<Detection> OnnxDetector::postprocess(
 
   std::vector<int> class_ids;
   std::vector<float> scores;
-  std::vector<cv::Rect> boxes;
+
+  // 浮点框：用于保留更高精度
+  std::vector<cv::Rect2d> boxes_float;
+
+  // 整数框：只用于 OpenCV NMS
+  std::vector<cv::Rect> boxes_nms;
 
   for (int i = 0; i < rows; ++i) {
-    // 原始布局是 [1, dims, rows]
     auto get_val = [&](int d) -> float {
       return output_data[d * rows + i];
     };
 
-    float cx = get_val(0);
-    float cy = get_val(1);
-    float w  = get_val(2);
-    float h  = get_val(3);
+    const float cx = get_val(0);
+    const float cy = get_val(1);
+    const float w  = get_val(2);
+    const float h  = get_val(3);
 
     int class_id = -1;
     float conf = 0.0f;
@@ -203,7 +202,7 @@ std::vector<Detection> OnnxDetector::postprocess(
       class_id = 0;
     } else {
       for (int c = 0; c < num_classes; ++c) {
-        float score = get_val(4 + c);
+        const float score = get_val(4 + c);
         if (score > conf) {
           conf = score;
           class_id = c;
@@ -215,29 +214,37 @@ std::vector<Detection> OnnxDetector::postprocess(
       continue;
     }
 
-    int left   = static_cast<int>((cx - 0.5f * w) * scale_x);
-    int top    = static_cast<int>((cy - 0.5f * h) * scale_y);
-    int width  = static_cast<int>(w * scale_x);
-    int height = static_cast<int>(h * scale_y);
+    // 将网络输出框映射回原图坐标
+    double left   = (cx - 0.5f * w) * scale_x;
+    double top    = (cy - 0.5f * h) * scale_y;
+    double width  = w * scale_x;
+    double height = h * scale_y;
 
-    left = std::max(0, std::min(left, image.cols - 1));
-    top = std::max(0, std::min(top, image.rows - 1));
-    width = std::max(1, std::min(width, image.cols - left));
-    height = std::max(1, std::min(height, image.rows - top));
+    left = std::max(0.0, std::min(left, static_cast<double>(image.cols - 1)));
+    top = std::max(0.0, std::min(top, static_cast<double>(image.rows - 1)));
+    width = std::max(1.0, std::min(width, static_cast<double>(image.cols) - left));
+    height = std::max(1.0, std::min(height, static_cast<double>(image.rows) - top));
 
-    boxes.emplace_back(left, top, width, height);
+    boxes_float.emplace_back(left, top, width, height);
+
+    boxes_nms.emplace_back(
+      static_cast<int>(left),
+      static_cast<int>(top),
+      static_cast<int>(width),
+      static_cast<int>(height));
+
     scores.emplace_back(conf);
     class_ids.emplace_back(class_id);
   }
 
   std::vector<int> indices;
-  cv::dnn::NMSBoxes(boxes, scores, conf_threshold_, iou_threshold_, indices);
+  cv::dnn::NMSBoxes(boxes_nms, scores, conf_threshold_, iou_threshold_, indices);
 
   for (int idx : indices) {
     Detection det;
     det.class_id = class_ids[idx];
     det.score = scores[idx];
-    det.box = boxes[idx];
+    det.box = boxes_float[idx];
 
     if (det.class_id >= 0 && det.class_id < static_cast<int>(class_names_.size())) {
       det.class_name = class_names_[det.class_id];
@@ -248,6 +255,7 @@ std::vector<Detection> OnnxDetector::postprocess(
     detections.push_back(det);
   }
 
+  // 按分数从高到低排序
   std::sort(
     detections.begin(), detections.end(),
     [](const Detection & a, const Detection & b) {

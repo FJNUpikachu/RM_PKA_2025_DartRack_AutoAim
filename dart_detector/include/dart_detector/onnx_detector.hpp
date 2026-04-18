@@ -3,9 +3,9 @@
 
 #include <opencv2/opencv.hpp>
 
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 
 #include <onnxruntime_cxx_api.h>
 
@@ -14,6 +14,7 @@
 namespace pka
 {
 
+// 这个类只负责 ONNX 模型的推理与后处理
 class OnnxDetector
 {
 public:
@@ -28,15 +29,18 @@ public:
     float conf_threshold,
     float iou_threshold);
 
+  // 输入原图，输出检测结果
   std::vector<Detection> infer(const cv::Mat & image);
 
 private:
+  // 前处理：resize + BGR->RGB + 归一化 + HWC->CHW
   cv::Mat preprocess(
     const cv::Mat & image,
     std::vector<float> & input_tensor_values,
     float & scale_x,
     float & scale_y) const;
 
+  // 后处理：解析输出、筛框、NMS
   std::vector<Detection> postprocess(
     const cv::Mat & image,
     const float * output_data,
@@ -53,7 +57,6 @@ private:
   float conf_threshold_ = 0.25f;
   float iou_threshold_ = 0.45f;
 
-  // ONNX Runtime
   std::unique_ptr<Ort::Env> env_;
   std::unique_ptr<Ort::Session> session_;
   std::unique_ptr<Ort::SessionOptions> session_options_;

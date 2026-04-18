@@ -1,53 +1,59 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.8)
 project(dart_solver)
 
-# Default to C++14
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-endif()
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Find dependencies
+# ===== 基础依赖 =====
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(dart_interfaces REQUIRED)
-find_package(Eigen3 REQUIRED)
 
-include_directories(
-  include
-  ${EIGEN3_INCLUDE_DIRS}
-)
-
-# Solver node library
-add_library(dart_solver SHARED
+# ===== solver 组件库 =====
+# 这里保留你现在的双模式结构：
+# - solver_node：ROS2 节点
+# - solver_one_euro_filter：一欧元滤波
+# - solver_kalman_filter：卡尔曼滤波
+# - solver_basic_method：统一 yaw 解算
+add_library(dart_solver_component SHARED
   src/solver_node.cpp
-  src/solver_method.cpp
-  src/one_euro_filter.cpp
+  src/solver_one_euro_filter.cpp
+  src/solver_kalman_filter.cpp
+  src/solver_basic_method.cpp
 )
 
-ament_target_dependencies(dart_solver
+target_include_directories(dart_solver_component
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(dart_solver_component
   rclcpp
   rclcpp_components
   std_msgs
   sensor_msgs
   dart_interfaces
-  Eigen3
 )
 
-rclcpp_components_register_nodes(dart_solver "pka::SolverNode")
-set(node_plugins "${node_plugins}dart_solver::SolverNode;$<TARGET_FILE:dart_solver>\n")
+# 注册组件
+rclcpp_components_register_nodes(dart_solver_component
+  "pka::SolverNode"
+)
 
+# 安装
 install(TARGETS
-  dart_solver
+  dart_solver_component
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY
@@ -55,20 +61,9 @@ install(DIRECTORY
   DESTINATION include
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_export_include_directories(include)
-ament_export_libraries(dart_solver)
-ament_export_dependencies(
-  rclcpp
-  rclcpp_components
-  std_msgs
-  sensor_msgs
-  dart_interfaces
-  Eigen3
+install(FILES
+  package.xml
+  DESTINATION share/${PROJECT_NAME}
 )
 
 ament_package()

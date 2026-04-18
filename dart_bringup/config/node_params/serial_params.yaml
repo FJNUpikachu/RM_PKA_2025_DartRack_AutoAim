@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     # 串口模式设置: 0=关闭, 1=实际串口, 2=虚拟串口
-    serial_mode: 0
+    serial_mode: 1
     
     # 硬件串口参数
     port_name: "/dev/ttyACM0"
