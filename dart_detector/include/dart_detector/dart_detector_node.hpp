@@ -11,19 +11,23 @@
 #include <sensor_msgs/msg/image.hpp>
 
 #include "dart_detector/onnx_detector.hpp"
+#include "dart_detector/traditional_detect_method.hpp"
 #include "dart_interfaces/msg/light.hpp"
 
 namespace pka
 {
 
 // detector 节点：
-// 负责接收图像、调用 ONNX 模型、选取当前帧最可信的灯、发布 light_position
+// 通过参数选择 backend（onnx / traditional），对图像进行检测并发布 light_position
 class DartDetectorNode : public rclcpp::Node
 {
 public:
   explicit DartDetectorNode(const rclcpp::NodeOptions & options);
 
 private:
+  // backend: "onnx" 或 "traditional"
+  std::string backend_;
+
   // ROS2 订阅与发布
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr img_sub_;
   rclcpp::Publisher<dart_interfaces::msg::Light>::SharedPtr light_pub_;
@@ -42,6 +46,9 @@ private:
 
   // 参数
   std::string image_topic_;
+  bool enable_debug_;
+
+  // ONNX 模式参数
   std::string model_path_;
   std::vector<std::string> class_names_;
   int input_width_;
@@ -49,23 +56,32 @@ private:
   float conf_threshold_;
   float iou_threshold_;
   bool use_cuda_;
-  bool enable_debug_;
 
-  // ===== 新增：尽量贴近 2025 传统 detector 的约束 =====
-  int roi_y_min_;
-  int roi_y_max_;
-  bool prefer_previous_target_;
-  double association_max_distance_px_;
+  // Traditional 模式参数
+  double green_diff_thresh_;
+  double green_abs_thresh_;
+  int blur_ksize_;
+  int y_min_;
+  int y_max_;
+  double aspect_ratio_threshold_;
+  double circularity_threshold_;
+  double min_radius_;
+  double max_radius_;
 
   bool has_printed_image_size_;
+
+  // 运行时统计（调试用）
+  size_t frame_count_;
+  size_t detect_count_;
+  double fps_;
+  rclcpp::Time last_frame_time_;
+  bool last_detected_;
 
   // ONNX 检测器
   OnnxDetector detector_;
 
-  // ===== 新增：上一帧已选目标中心，用于“同一目标连续优先” =====
-  bool has_last_target_;
-  double last_target_x_;
-  double last_target_y_;
+  // Traditional 检测器
+  TraditionalDartDetector traditional_detector_;
 
   void declareParameters();
   void readParameters();

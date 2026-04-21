@@ -2,7 +2,4 @@ namespace: ''
 virtual_serial: true
 camera: 'dahua'
 
-# detector_version:
-#   1 -> ONNX 版 detector
-#   2 -> 传统识别版 detector
-detector_version: 1
+# detector_version: 已不再使用，backend 在 `detector_params.yaml` 内配置

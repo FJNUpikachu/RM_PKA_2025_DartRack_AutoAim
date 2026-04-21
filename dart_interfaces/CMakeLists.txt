@@ -7,7 +7,6 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 
@@ -21,7 +20,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     DEPENDENCIES 
       builtin_interfaces
       std_msgs
-      geometry_msgs
 )
 
 # 测试部分必须在 ament_package() 之前

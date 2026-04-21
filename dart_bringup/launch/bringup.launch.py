@@ -54,15 +54,6 @@ def generate_launch_description():
         extra_arguments=[{'use_intra_process_comms': True}]
     )
 
-    # ===== 传统 detector 节点 =====
-    traditional_detector_node = ComposableNode(
-        package='dart_detector',
-        plugin='pka::TraditionalDartDetectorNode',
-        name='traditional_detector',
-        parameters=[get_params('traditional_detector')],
-        extra_arguments=[{'use_intra_process_comms': True}]
-    )
-
     # ===== serial 节点 =====
     dart_serial_node = ComposableNode(
         package='dart_serial',
@@ -95,20 +86,13 @@ def generate_launch_description():
             ros_arguments=['--ros-args'],
         )
 
-    # 根据 launch_params 选择 detector 版本
-    # detector_version:
-    #   1 -> ONNX 版
-    #   2 -> 传统识别版
     def create_detector_container():
-        detector_version = launch_params.get('detector_version', 1)
-        detector_node = dart_detector_node if detector_version == 1 else traditional_detector_node
-
         return ComposableNodeContainer(
             name='detector_container',
             namespace=launch_params['namespace'],
             package='rclcpp_components',
             executable='component_container_mt',
-            composable_node_descriptions=[detector_node],
+            composable_node_descriptions=[dart_detector_node],
             output='both',
             emulate_tty=True,
             ros_arguments=['--ros-args'],

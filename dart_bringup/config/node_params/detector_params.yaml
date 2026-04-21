@@ -1,26 +1,36 @@
 dart_detector:
   ros__parameters:
+    # backend: "onnx" 或 "traditional"
+    backend: "onnx"
+
+    # 图像输入话题
     image_topic: "image_raw"
-    model_path: "/home/pka/RM_PKA_2026_DartRack_AutoAim-main/src/dart_lighttrain/best.onnx"
-    class_names: ["light"]
 
-    input_width: 192
-    input_height: 192
-
-    conf_threshold: 0.25
-    iou_threshold: 0.45
-
-    use_cuda: false
+    # enable_debug: 每 5 秒在终端打印一次 detector 运行摘要（FPS/检测率）
+    #               同时控制首次图像尺寸打印
     enable_debug: false
 
-    # ===== 尽量贴近 2025 传统 detector 的约束 =====
-    # 如果赛场里引导灯大致总在某个竖直区域，建议开 ROI
-    # 设成 0 表示不用 ROI
-    roi_y_min: 0
-    roi_y_max: 0
+    # =========================
+    # ONNX 后端参数
+    # =========================
+    # 支持写相对路径：相对 dart_bringup 的 share 目录
+    model_path: "model/best.onnx"
+    class_names: ["light"]
+    input_width: 192
+    input_height: 192
+    conf_threshold: 0.25
+    iou_threshold: 0.45
+    use_cuda: false
 
-    # 是否优先追踪上一帧已经选中的那个目标
-    prefer_previous_target: true
-
-    # 上一帧目标和当前候选中心的最大关联距离
-    association_max_distance_px: 80.0
+    # =========================
+    # Traditional 后端参数
+    # =========================
+    green_diff_thresh: 30.0
+    green_abs_thresh: 80.0
+    blur_ksize: 5
+    y_min: 0
+    y_max: 0
+    aspect_ratio_threshold: 1.5
+    circularity_threshold: 0.65
+    min_radius: 5.0
+    max_radius: 100.0

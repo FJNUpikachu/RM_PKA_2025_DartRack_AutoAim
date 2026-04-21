@@ -1,31 +1,36 @@
 #include "dart_solver/solver_node.hpp"
+
 #include <rclcpp_components/register_node_macro.hpp>
 
 namespace pka {
 
 SolverNode::SolverNode(const rclcpp::NodeOptions& options)
     : Node("dart_solver_node", options),
+      filter_enabled_(false),
+      filter_type_("one_euro"),
+      one_euro_freq_(0.0),
+      one_euro_min_cutoff_(0.0),
+      one_euro_beta_(0.0),
+      one_euro_d_cutoff_(0.0),
+      ekf_process_noise_x_(0.0),
+      ekf_process_noise_y_(0.0),
+      ekf_measurement_noise_x_(0.0),
+      ekf_measurement_noise_y_(0.0),
+      ekf_initial_covariance_(0.0),
+      publish_debug_topics_(true),
+      debug_log_enabled_(false),
       frame_count_(0),
       fps_(0.0),
       camera_info_received_(false),
-      filter_enabled_(false),
-      filter_mode_(1),
-      filter_freq_(0.0),
-      filter_min_cutoff_(0.0),
-      filter_beta_(0.0),
-      filter_d_cutoff_(1.0),
-      kalman_q_(0.0),
-      kalman_r_(0.0),
-      kalman_init_p_(0.0),
       has_last_valid_yaw_(false),
-      last_valid_yaw_(0.0) {
+      last_valid_yaw_(0.0),
+      last_fire_advice_(255),
+      last_valid_measurement_(false) {
     try {
-        // 初始化顺序：参数 -> 滤波器 -> 发布器 -> 订阅器
         initParameters();
         initFilters();
         initPublishers();
         initSubscribers();
-
         RCLCPP_INFO(get_logger(), "Dart solver node initialized successfully");
     } catch (const std::exception& e) {
         RCLCPP_FATAL(get_logger(), "Failed to initialize node: %s", e.what());
@@ -34,48 +39,60 @@ SolverNode::SolverNode(const rclcpp::NodeOptions& options)
 }
 
 void SolverNode::initParameters() {
-    // 图像尺寸参数
     solver_params_.image_width = this->declare_parameter("image.width", 800.0);
     solver_params_.image_height = this->declare_parameter("image.height", 600.0);
-
-    // 滤波器参数
     filter_enabled_ = this->declare_parameter("filter.enable", true);
-    filter_mode_ = this->declare_parameter("filter.mode", 1);
+    filter_type_ = this->declare_parameter("filter.type", std::string("one_euro"));
 
-    // 一欧元滤波参数（按 2025 逻辑）
-    filter_freq_ = this->declare_parameter("one_euro.freq", 30.0);
-    filter_min_cutoff_ = this->declare_parameter("one_euro.min_cutoff", 1.0);
-    filter_beta_ = this->declare_parameter("one_euro.beta", 0.5);
-    filter_d_cutoff_ = this->declare_parameter("one_euro.d_cutoff", 1.0);
+    one_euro_freq_ = this->declare_parameter("one_euro.freq", 30.0);
+    one_euro_min_cutoff_ = this->declare_parameter("one_euro.min_cutoff", 1.0);
+    one_euro_beta_ = this->declare_parameter("one_euro.beta", 0.5);
+    one_euro_d_cutoff_ = this->declare_parameter("one_euro.d_cutoff", 1.0);
 
-    // 卡尔曼参数（保留当前包结构）
-    kalman_q_ = this->declare_parameter("kalman.q", 8.0);
-    kalman_r_ = this->declare_parameter("kalman.r", 12.0);
-    kalman_init_p_ = this->declare_parameter("kalman.init_p", 500.0);
+    ekf_process_noise_x_ = this->declare_parameter("ekf.process_noise_x", 8.0);
+    ekf_process_noise_y_ = this->declare_parameter("ekf.process_noise_y", 8.0);
+    ekf_measurement_noise_x_ = this->declare_parameter("ekf.measurement_noise_x", 12.0);
+    ekf_measurement_noise_y_ = this->declare_parameter("ekf.measurement_noise_y", 12.0);
+    ekf_initial_covariance_ = this->declare_parameter("ekf.initial_covariance", 500.0);
 
-    // yaw角度判断阈值
     solver_params_.yaw_threshold = this->declare_parameter("fire.yaw_threshold", 0.2);
-
-    // 初始化解算方法
+    publish_debug_topics_ = this->declare_parameter("debug.publish_topics", true);
+    debug_log_enabled_    = this->declare_parameter("debug.enable_log", false);
     solver_method_ = std::make_unique<SolverMethod>(solver_params_);
 
+    RCLCPP_INFO(get_logger(), "===== solver 参数 =====");
     RCLCPP_INFO(get_logger(), "Image size: %.0fx%.0f",
                 solver_params_.image_width, solver_params_.image_height);
-    RCLCPP_INFO(get_logger(), "Yaw threshold: %.2f degrees", solver_params_.yaw_threshold);
-    RCLCPP_INFO(get_logger(), "Filter enabled: %s, mode=%d",
-                filter_enabled_ ? "true" : "false", filter_mode_);
+    RCLCPP_INFO(get_logger(), "Yaw threshold: %.2f deg", solver_params_.yaw_threshold);
+    RCLCPP_INFO(get_logger(), "Filter: enable=%s  type=%s",
+                filter_enabled_ ? "true" : "false", filter_type_.c_str());
+    if (filter_type_ == "one_euro") {
+        RCLCPP_INFO(get_logger(), "OneEuro: freq=%.1f  min_cutoff=%.2f  beta=%.3f  d_cutoff=%.2f",
+                    one_euro_freq_, one_euro_min_cutoff_, one_euro_beta_, one_euro_d_cutoff_);
+    } else if (filter_type_ == "ekf") {
+        RCLCPP_INFO(get_logger(), "EKF: q_x=%.2f q_y=%.2f  r_x=%.2f r_y=%.2f  P0=%.1f",
+                    ekf_process_noise_x_, ekf_process_noise_y_,
+                    ekf_measurement_noise_x_, ekf_measurement_noise_y_,
+                    ekf_initial_covariance_);
+    }
+    RCLCPP_INFO(get_logger(), "Debug: publish_topics=%s  enable_log=%s",
+                publish_debug_topics_ ? "true" : "false",
+                debug_log_enabled_    ? "true" : "false");
+    RCLCPP_INFO(get_logger(), "=======================");
 }
 
 void SolverNode::initFilters() {
-    // 一欧元滤波器
-    x_filter_ = std::make_unique<OneEuroFilter>(
-        filter_freq_, filter_min_cutoff_, filter_beta_, filter_d_cutoff_);
-    y_filter_ = std::make_unique<OneEuroFilter>(
-        filter_freq_, filter_min_cutoff_, filter_beta_, filter_d_cutoff_);
+    x_one_euro_filter_ = std::make_unique<OneEuroFilter>(
+        one_euro_freq_, one_euro_min_cutoff_, one_euro_beta_, one_euro_d_cutoff_);
+    y_one_euro_filter_ = std::make_unique<OneEuroFilter>(
+        one_euro_freq_, one_euro_min_cutoff_, one_euro_beta_, one_euro_d_cutoff_);
 
-    // 卡尔曼滤波器
-    x_kalman_filter_ = std::make_unique<KalmanFilter1D>(kalman_q_, kalman_r_, kalman_init_p_);
-    y_kalman_filter_ = std::make_unique<KalmanFilter1D>(kalman_q_, kalman_r_, kalman_init_p_);
+    ekf_filter_ = std::make_unique<Ekf2DFilter>(
+        ekf_process_noise_x_,
+        ekf_process_noise_y_,
+        ekf_measurement_noise_x_,
+        ekf_measurement_noise_y_,
+        ekf_initial_covariance_);
 }
 
 void SolverNode::initSubscribers() {
@@ -103,111 +120,169 @@ void SolverNode::initPublishers() {
         "fire_state",
         qos_reliable);
 
-    RCLCPP_INFO(get_logger(), "Publishing to topics: serial_send_data, fire_state");
+    yaw_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+        "yaw",
+        qos_reliable);
+
+    filtered_x_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+        "filtered_x",
+        qos_reliable);
+
+    filtered_y_pub_ = this->create_publisher<std_msgs::msg::Float32>(
+        "filtered_y",
+        qos_reliable);
+
+    RCLCPP_INFO(get_logger(),
+                "Publishing to topics: serial_send_data, fire_state, yaw, filtered_x, filtered_y");
 }
 
 void SolverNode::cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg) {
     if (!camera_info_received_) {
-        // 从 camera_info 获取相机内参
         solver_params_.fx = msg->k[0];
         solver_params_.fy = msg->k[4];
 
         solver_method_->updateParameters(solver_params_);
-
         camera_info_received_ = true;
+
         RCLCPP_INFO(get_logger(), "Received camera info: fx=%.2f, fy=%.2f",
                     solver_params_.fx, solver_params_.fy);
     }
 }
 
 void SolverNode::lightCallback(const dart_interfaces::msg::Light::SharedPtr msg) {
-    // 等待相机内参
     if (!camera_info_received_) {
         RCLCPP_DEBUG(get_logger(), "Waiting for camera info...");
         return;
     }
 
-    // 计算帧率
     rclcpp::Time current_time = this->now();
     if (frame_count_ == 0) {
         last_time_ = current_time;
     } else {
         double dt = (current_time - last_time_).seconds();
         if (dt > 1e-6) {
-            fps_ = 0.9 * fps_ + 0.1 / dt;  // 指数平滑
+            fps_ = 0.9 * fps_ + 0.1 / dt;
         }
         last_time_ = current_time;
     }
     frame_count_++;
 
-    // ===== 按 2025 solver 逻辑判断是否检测到目标 =====
-    // 2025 传统 detector：未检测到时发布 (0, 0)
-    // 2026 神经网络 detector：未检测到时发布 (-1, -1)
-    bool detected = true;
-
-    if ((msg->x == 0.0 && msg->y == 0.0) || (msg->x < 0.0 || msg->y < 0.0)) {
-        detected = false;
-    }
-
     double x_processed = msg->x;
     double y_processed = msg->y;
-    double t = current_time.seconds();
 
-    // 只有检测到目标时才进行滤波
-    if (detected && filter_enabled_) {
-        if (filter_mode_ == 1) {
-            // 一欧元：完全按 2025 逻辑
-            x_processed = x_filter_->filter(msg->x, t);
-            y_processed = y_filter_->filter(msg->y, t);
-        } else if (filter_mode_ == 2) {
-            // 卡尔曼：只是保留入口，不影响一欧元主逻辑
-            x_processed = x_kalman_filter_->filter(msg->x, t);
-            y_processed = y_kalman_filter_->filter(msg->y, t);
+    const double t = current_time.seconds();
+
+    const bool invalid_by_negative = (msg->x < 0.0 || msg->y < 0.0);
+    const bool invalid_by_zero = (msg->x == 0.0 && msg->y == 0.0);
+    const bool invalid_by_range =
+        (msg->x >= solver_params_.image_width || msg->y >= solver_params_.image_height);
+
+    const bool valid_measurement =
+        !(invalid_by_negative || invalid_by_zero || invalid_by_range);
+
+    double yaw = 0.0;
+    uint8_t fire_advice = 0;
+
+    // 测量有效性状态变化
+    if (valid_measurement != last_valid_measurement_) {
+        if (valid_measurement) {
+            RCLCPP_INFO(get_logger(),
+                "[solver] 目标重新出现: raw=(%.2f, %.2f)  frame=%zu",
+                msg->x, msg->y, frame_count_);
+        } else {
+            RCLCPP_INFO(get_logger(),
+                "[solver] 目标丢失 (raw=(%.2f, %.2f))  frame=%zu",
+                msg->x, msg->y, frame_count_);
         }
+        last_valid_measurement_ = valid_measurement;
     }
 
-    double yaw_angle = 0.0;
+    if (valid_measurement) {
+        if (filter_enabled_) {
+            if (filter_type_ == "one_euro") {
+                x_processed = x_one_euro_filter_->filter(msg->x, t);
+                y_processed = y_one_euro_filter_->filter(msg->y, t);
+            } else if (filter_type_ == "ekf") {
+                const auto filtered_state = ekf_filter_->filter(msg->x, msg->y);
+                x_processed = filtered_state[0];
+                y_processed = filtered_state[1];
+            } else {
+                RCLCPP_WARN_THROTTLE(
+                    get_logger(), *get_clock(), 2000,
+                    "Unknown filter.type=%s, use raw measurement", filter_type_.c_str());
+            }
+        }
 
-    if (detected) {
-        // 正常计算 yaw
-        yaw_angle = solver_method_->calculateYawAngle(x_processed);
-
-        // 更新最近一次有效 yaw
-        last_valid_yaw_ = yaw_angle;
+        yaw = solver_method_->calculateYawAngle(x_processed);
+        fire_advice = solver_method_->determineFireAdvice(yaw);
+        last_valid_yaw_ = yaw;
         has_last_valid_yaw_ = true;
     } else {
-        // 未检测到目标：保持上一次有效 yaw
-        if (has_last_valid_yaw_) {
-            yaw_angle = last_valid_yaw_;
-        } else {
-            // 系统刚启动且还没有任何有效目标时
-            yaw_angle = 0.0;
-        }
+        yaw = has_last_valid_yaw_ ? last_valid_yaw_ : 0.0;
+        fire_advice = 0;
+        x_processed = msg->x;
+        y_processed = msg->y;
     }
 
-    // 判断是否可发射
-    uint8_t fire_advice = solver_method_->determineFireAdvice(yaw_angle);
+    // 开火状态变化
+    if (fire_advice != last_fire_advice_) {
+        if (fire_advice == 1) {
+            RCLCPP_INFO(get_logger(),
+                "[solver] 开火许可: yaw=%.3f deg  threshold=%.3f deg  frame=%zu",
+                yaw, solver_params_.yaw_threshold, frame_count_);
+        } else {
+            RCLCPP_INFO(get_logger(),
+                "[solver] 开火禁止: yaw=%.3f deg  frame=%zu",
+                yaw, frame_count_);
+        }
+        last_fire_advice_ = fire_advice;
+    }
 
-    // 发布发射状态
     auto fire_state_msg = std_msgs::msg::Int32();
     fire_state_msg.data = fire_advice;
     fire_state_pub_->publish(fire_state_msg);
 
-    // 构建并发布串口数据消息
+    if (publish_debug_topics_) {
+        auto yaw_msg = std_msgs::msg::Float32();
+        yaw_msg.data = static_cast<float>(yaw);
+        yaw_pub_->publish(yaw_msg);
+
+        auto filtered_x_msg = std_msgs::msg::Float32();
+        filtered_x_msg.data = static_cast<float>(x_processed);
+        filtered_x_pub_->publish(filtered_x_msg);
+
+        auto filtered_y_msg = std_msgs::msg::Float32();
+        filtered_y_msg.data = static_cast<float>(y_processed);
+        filtered_y_pub_->publish(filtered_y_msg);
+    }
+
     auto serial_msg = dart_interfaces::msg::SerialSendData();
     serial_msg.header.stamp = current_time;
-    serial_msg.yaw = static_cast<float>(yaw_angle);
+    serial_msg.yaw = static_cast<float>(yaw);
     serial_msg.fire_advice = fire_advice;
     serial_pub_->publish(serial_msg);
 
-    if (detected) {
-        RCLCPP_DEBUG(get_logger(),
-                    "Detected. Filtered position: (%.2f, %.2f), Yaw: %.2f°, Fire: %d, FPS: %.1f",
-                    x_processed, y_processed, yaw_angle, fire_advice, fps_);
-    } else {
-        RCLCPP_DEBUG(get_logger(),
-                    "Not detected. Keep last yaw: %.2f°, Fire: %d, FPS: %.1f",
-                    yaw_angle, fire_advice, fps_);
+    // 每帧 DEBUG：完整状态
+    RCLCPP_DEBUG(
+        get_logger(),
+        "[solver] frame=%zu filter=%s valid=%s "
+        "raw=(%.2f,%.2f) filtered=(%.2f,%.2f) "
+        "yaw=%.3f fire=%d fps=%.1f",
+        frame_count_,
+        filter_type_.c_str(),
+        valid_measurement ? "Y" : "N",
+        msg->x, msg->y,
+        x_processed, y_processed,
+        yaw, fire_advice, fps_);
+
+    // 每 5 秒打一条 INFO 摘要（debug.enable_log 时开启）
+    if (debug_log_enabled_) {
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "[solver] FPS=%.1f  frame=%zu  yaw=%.3f deg  fire=%d  filter=%s  valid=%s",
+            fps_, frame_count_, yaw, fire_advice,
+            filter_type_.c_str(),
+            valid_measurement ? "Y" : "N");
     }
 }
 

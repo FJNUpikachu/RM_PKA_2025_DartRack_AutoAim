@@ -1,4 +1,5 @@
-#include "dart_solver/solver_one_euro_filter.hpp"
+#include "dart_solver/filters/solver_one_euro_filter.hpp"
+
 #include <cmath>
 
 namespace pka {
@@ -21,7 +22,9 @@ double OneEuroFilter::filter(double x, double t) {
     }
 
     double dt = t - t_prev_;
-    if (dt <= 0) return x_prev_;
+    if (dt <= 0) {
+        return x_prev_;
+    }
 
     double freq = 1.0 / dt;
     setFrequency(freq);
@@ -53,6 +56,12 @@ void OneEuroFilter::setBeta(double beta) {
 
 void OneEuroFilter::setDCutoff(double d_cutoff) {
     d_cutoff_ = d_cutoff;
+}
+
+void OneEuroFilter::reset() {
+    x_prev_ = 0.0;
+    dx_prev_ = 0.0;
+    t_prev_ = -1.0;
 }
 
 }  // namespace pka

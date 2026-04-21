@@ -3,7 +3,9 @@
 
 namespace pka {
 
-SolverMethod::SolverMethod(const SolverParameters& params) : params_(params) {}
+SolverMethod::SolverMethod(const SolverParameters& params)
+    : params_(params)
+{}
 
 void SolverMethod::updateParameters(const SolverParameters& params) {
     params_ = params;
@@ -11,10 +13,10 @@ void SolverMethod::updateParameters(const SolverParameters& params) {
 
 double SolverMethod::calculateYawAngle(double x_pixel) {
     double image_center_x = params_.image_width / 2.0;
-    double x_diff = x_pixel - image_center_x;
-    double yaw_rad = std::atan2(x_diff, params_.fx);
-    double yaw_deg = yaw_rad * 180.0 / std::acos(-1.0);
-    return yaw_deg;
+    double error_pixel = x_pixel - image_center_x;
+    const double focal_length = params_.fx > 1e-6 ? params_.fx : 1.0;
+    const double yaw_rad = std::atan2(error_pixel, focal_length);
+    return yaw_rad * 180.0 / M_PI;
 }
 
 uint8_t SolverMethod::determineFireAdvice(double yaw_angle) {

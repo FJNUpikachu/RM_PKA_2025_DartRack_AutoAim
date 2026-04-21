@@ -1,5 +1,5 @@
-#ifndef DART_SOLVER_SOLVER_ONE_EURO_FILTER_HPP_
-#define DART_SOLVER_SOLVER_ONE_EURO_FILTER_HPP_
+#ifndef DART_SOLVER_FILTERS_SOLVER_ONE_EURO_FILTER_HPP_
+#define DART_SOLVER_FILTERS_SOLVER_ONE_EURO_FILTER_HPP_
 
 namespace pka {
 
@@ -13,6 +13,7 @@ public:
     void setMinCutoff(double min_cutoff);
     void setBeta(double beta);
     void setDCutoff(double d_cutoff);
+    void reset();
 
 private:
     double x_prev_;
@@ -28,4 +29,4 @@ private:
 
 }  // namespace pka
 
-#endif  // DART_SOLVER_SOLVER_ONE_EURO_FILTER_HPP_
+#endif  // DART_SOLVER_FILTERS_SOLVER_ONE_EURO_FILTER_HPP_

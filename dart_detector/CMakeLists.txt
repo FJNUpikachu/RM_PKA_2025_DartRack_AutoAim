@@ -13,6 +13,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(OpenCV REQUIRED)
@@ -36,7 +37,6 @@ add_library(dart_detector_core SHARED
   src/dart_detector_node.cpp
   src/onnx_detector.cpp
   src/traditional_detect_method.cpp
-  src/traditional_detector_node.cpp
 )
 
 target_include_directories(dart_detector_core
@@ -50,6 +50,7 @@ target_include_directories(dart_detector_core
 ament_target_dependencies(dart_detector_core
   rclcpp
   rclcpp_components
+  ament_index_cpp
   sensor_msgs
   cv_bridge
   image_transport
@@ -66,7 +67,6 @@ target_link_libraries(dart_detector_core
 # 2. 传统识别 detector
 rclcpp_components_register_nodes(dart_detector_core
   "pka::DartDetectorNode"
-  "pka::TraditionalDartDetectorNode"
 )
 
 # ===== 安装 =====

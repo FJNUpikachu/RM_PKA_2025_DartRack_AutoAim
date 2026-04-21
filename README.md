@@ -22,8 +22,6 @@
 ├── dart_upstart : 自启动
 │
 ├── dart_utils : 工具包
-│
-├── dart_lighttrain : 训练模型
 ```
 
 ## 二、环境配置
@@ -63,7 +61,7 @@
 安装时注意换源。
 如此前安装过大华相机驱动，此时也可把旧源一起清理掉。
 
-##### onnxruntime安装
+##### Onnxruntime安装
 
  ```bash
 cd ~

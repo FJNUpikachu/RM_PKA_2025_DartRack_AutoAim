@@ -1,18 +1,31 @@
 dart_solver_node:
   ros__parameters:
+    # 图像尺寸
     image.width: 800.0
     image.height: 600.0
 
+    # 滤波总开关与类型
     filter.enable: true
-    filter.mode: 1
+    filter.type: "one_euro"   # "one_euro" or "ekf"
 
+    # 一欧元滤波参数
     one_euro.freq: 30.0
     one_euro.min_cutoff: 1.0
     one_euro.beta: 0.5
     one_euro.d_cutoff: 1.0
 
-    kalman.q: 8.0
-    kalman.r: 12.0
-    kalman.init_p: 500.0
+    # 二维 EKF 参数
+    ekf.process_noise_x: 8.0
+    ekf.process_noise_y: 8.0
+    ekf.measurement_noise_x: 12.0
+    ekf.measurement_noise_y: 12.0
+    ekf.initial_covariance: 500.0
 
+    # 发射判断阈值（角度，度）
     fire.yaw_threshold: 0.2
+
+    # 调试选项
+    # debug.enable_log: 每 5 秒在终端打印一次 solver 运行摘要（yaw/FPS/fire状态）
+    debug.enable_log: false
+    # debug.publish_topics: 是否发布 yaw / filtered_x / filtered_y 话题（foxglove 调试用）
+    debug.publish_topics: true
