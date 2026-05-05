@@ -36,7 +36,7 @@ private:
     rclcpp::Publisher<dart_interfaces::msg::SerialSendData>::SharedPtr serial_pub_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr fire_state_pub_;
 
-    // 调试发布器（新增）
+    // 调试发布器
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr yaw_pub_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr filtered_x_pub_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr filtered_y_pub_;
@@ -66,12 +66,26 @@ private:
     bool publish_debug_topics_;
     bool debug_log_enabled_;
 
+    // ===== 发射预测补偿参数 =====
+    bool fire_prediction_enabled_;
+    double fire_stop_delay_s_;
+    double fire_max_yaw_rate_deg_s_;
+    double fire_yaw_rate_lpf_alpha_;
+    bool fire_zero_yaw_when_advice_;
+
     size_t frame_count_;
     double fps_;
     rclcpp::Time last_time_;
     bool camera_info_received_;
     bool has_last_valid_yaw_;
     double last_valid_yaw_;
+
+    // ===== yaw 速度估计状态 =====
+    bool has_last_yaw_sample_;
+    double last_yaw_sample_;
+    rclcpp::Time last_yaw_sample_time_;
+    bool has_yaw_rate_;
+    double yaw_rate_deg_s_;
 
     // 状态跟踪（调试用）
     uint8_t last_fire_advice_;

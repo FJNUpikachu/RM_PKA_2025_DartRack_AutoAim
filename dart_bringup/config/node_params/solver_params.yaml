@@ -1,8 +1,8 @@
 dart_solver_node:
   ros__parameters:
     # 图像尺寸
-    image.width: 800.0
-    image.height: 600.0
+    image.width: 400.0
+    image.height: 320.0
 
     # 滤波总开关与类型
     filter.enable: true
@@ -22,10 +22,32 @@ dart_solver_node:
     ekf.initial_covariance: 500.0
 
     # 发射判断阈值（角度，度）
-    fire.yaw_threshold: 0.2
+    fire.yaw_threshold: 0.15
+
+    # ===== 发射预测补偿 =====
+    # 开启后，solver 不只看当前 yaw，还会看 yaw_rate，预测一小段时间后的 yaw_pred。
+    fire.prediction_enable: true
+
+    # 等效停止延迟，单位秒。
+    # 如果发 1 后仍然过冲，适当增大，比如 0.08 -> 0.10。
+    # 如果发 1 太早、还没贴近就停，适当减小，比如 0.08 -> 0.05。
+    fire.stop_delay_s: 0.13
+
+    # 允许 fire 的最大 yaw 速度，单位 deg/s。
+    # 太快时不允许 fire，避免高速穿越中心。
+    fire.max_yaw_rate_deg_s: 2.5
+
+    # yaw 速度低通系数，0~1。
+    # 越大越灵敏，越小越平滑。
+    fire.yaw_rate_lpf_alpha: 0.35
+
+    # fire_advice=1 时，是否把下发 yaw 置 0。
+    # 建议先保持 true，用于减少电控继续修正导致的过冲。
+    fire.zero_yaw_when_advice: true
 
     # 调试选项
-    # debug.enable_log: 每 5 秒在终端打印一次 solver 运行摘要（yaw/FPS/fire状态）
+    # debug.enable_log: 每 5 秒在终端打印一次 solver 运行摘要
     debug.enable_log: false
-    # debug.publish_topics: 是否发布 yaw / filtered_x / filtered_y 话题（foxglove 调试用）
+
+    # debug.publish_topics: 是否发布 yaw / filtered_x / filtered_y 话题
     debug.publish_topics: true

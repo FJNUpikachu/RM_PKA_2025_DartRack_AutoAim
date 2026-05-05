@@ -1,5 +1,7 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # 获取当前用户的用户名和家目录
 USER_NAME=${SUDO_USER:-$(whoami)}
 HOME_DIR=$(eval echo ~$USER_NAME)

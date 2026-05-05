@@ -94,7 +94,10 @@ source install/setup.bash
 ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 ```
 
-## 五、上传github
+## 五、开机自启动
+详情见dart_upstart README.md
+
+## 六、上传github
 ```bash
 git clone https://github.com/FJNUpikachu/RM_PKA_2025_DartRack_AutoAim.git
 git add .

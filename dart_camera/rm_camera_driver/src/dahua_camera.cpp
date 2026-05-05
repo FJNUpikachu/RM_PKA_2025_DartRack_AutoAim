@@ -260,8 +260,8 @@ void Dahua_CameraNode::declareParameters()
   // 其他参数
   auto_white_balance_ = this->declare_parameter("auto_white_balance", 1);
   frame_rate_ = this->declare_parameter("frame_rate", 100.0);
-  resolution_width_ = this->declare_parameter("resolution_width", 800);
-  resolution_height_ = this->declare_parameter("resolution_height", 600);
+  resolution_width_ = this->declare_parameter("resolution_width", 312);
+  resolution_height_ = this->declare_parameter("resolution_height", 256);
   offset_x_ = this->declare_parameter("offset_x", 0);
   offset_y_ = this->declare_parameter("offset_y", 0);
 

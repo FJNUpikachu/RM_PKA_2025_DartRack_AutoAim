@@ -3,12 +3,13 @@
     camera_info_url: package://dart_bringup/config/dahua_camera_info.yaml
     # exposure_time: 3000.0
     # gain: 15.0
-    exposure_time: 500.0
+    exposure_time: 250.0
     gain: 10.0
     auto_white_balance: 1
-    resolution_width: 800
-    resolution_height: 600
-    offsetX: 0
-    offsetY: 0
+    # 1920 x 1200
+    resolution_width: 400
+    resolution_height: 320
+    offset_x: 752
+    offset_y: 432
     Brightness: 50
     camera_name: "narrow_stereo"
