@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    camera_info_url: package://dart_bringup/config/dahua_camera_info.yaml
+    # exposure_time: 3000.0
+    # gain: 15.0
+    exposure_time: 1.0
+    gain: 10.0
+    auto_white_balance: 1
+    # 1920 x 1200
+    resolution_width: 256
+    resolution_height: 176
+    offset_x: 832
+    offset_y: 512
+    Brightness: 50
+    camera_name: "narrow_stereo"

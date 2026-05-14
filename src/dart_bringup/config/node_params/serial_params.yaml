@@ -1,0 +1,44 @@
+/**:
+  ros__parameters:
+    # 0=关闭串口不发送  1=打开串口，订阅 serial_send_topic（与 dart_solver 发布的 serial_send_data 一致），按 send_frequency 组包发送
+    # 2=打开串口，按 virtual_* 与 virtual_send_frequency 发送（不调订阅）
+    serial_mode: 1
+
+    port_name: "/dev/ttyACM0"
+    baudrate: 115200
+
+    # 串口自动检测：配置端口不存在时，自动尝试 /dev/dart_serial、/dev/serial/by-id/*、/dev/ttyACM*、/dev/ttyUSB*
+    auto_detect_port: true
+
+    # 写入 SerialSendData.header.stamp 时：stamp = now() - abs(timestamp_offset)
+    timestamp_offset: 0.0
+
+    debug: false
+
+    # 与 dart_solver 中 sdart_interfaces::msg::Light
+    virtual_send_frequency: 100.0
+    virtual_fire_advice: false
+    virtual_yaw: 0.0
+
+    # 健康管理（mode=1,2）
+    max_failure_count: 10
+    health_check_interval: 1.0
+    max_restart_attempts: 0
+    restart_cooldown: 2.0
+    enable_auto_restart: true
+    restart_delay: 1000
+
+
+
+# 改动：
+# 1. serial_params.yaml 默认端口改成 /dev/ttyACM0
+# 2. 增加 auto_detect_port: true
+# 3. 如果 /dev/ttyACM1 不存在，会自动扫描：
+#   /dev/dart_serial
+#   /dev/serial/by-id/*
+#   /dev/ttyACM*
+#   /dev/ttyUSB*
+#4. 串口 write 异常后会立刻 close 坏句柄，等待重连
+#5. 重启串口期间暂停发送，避免一边 close/open 一边 write
+#6. 给 open / close / write 加了互斥锁，避免 component_container_mt 多线程冲突
+#7. 串口异常时不再 100Hz 疯狂写坏串口

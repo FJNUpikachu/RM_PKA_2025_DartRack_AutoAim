@@ -95,7 +95,7 @@ ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 ```
 
 ## 五、开机自启动
-详情见dart_upstart README.md
+详情见dart_upstart README
 
 ## 六、上传github
 ```bash

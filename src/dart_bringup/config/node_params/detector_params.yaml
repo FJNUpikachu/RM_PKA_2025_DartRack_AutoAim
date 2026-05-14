@@ -1,0 +1,46 @@
+dart_detector:
+  ros__parameters:
+    # backend: 1=onnx，2=traditional
+    backend: 2
+
+    # 图像输入话题
+    image_topic: "image_raw"
+
+    # enable_debug: 每 5 秒在终端打印一次 detector 运行摘要（FPS/检测率）
+    #               同时控制首次图像尺寸打印
+    enable_debug: false
+
+    # =========================
+    # ONNX 后端参数
+    # =========================
+    # 支持写相对路径：相对 dart_bringup 的 share 目录
+    model_path: "model/best.onnx"
+    class_names: ["light"]
+    input_width: 192
+    input_height: 192
+    conf_threshold: 0.25
+    iou_threshold: 0.45
+    use_cuda: false
+
+    # =========================
+    # ONNX light_position 低通滤波
+    # =========================
+    # 只对 backend=1（onnx）生效。用于平滑神经网络框中心，降低 light_position 高频抖动。
+    # alpha 越小越平滑但延迟越大；alpha 越大越跟手但抖动越明显。推荐先用 0.18。
+    onnx_lpf.enable: false
+    onnx_lpf.alpha: 0.18
+    # 单帧中心跳变超过该值时重置滤波，0 表示关闭跳变保护。
+    onnx_lpf.max_jump_px: 0.0
+
+    # =========================
+    # Traditional 后端参数
+    # =========================
+    green_diff_thresh: 30.0
+    green_abs_thresh: 80.0
+    blur_ksize: 5
+    y_min: 0
+    y_max: 0
+    aspect_ratio_threshold: 1.5
+    circularity_threshold: 0.65
+    min_radius: 5.0
+    max_radius: 100.0
