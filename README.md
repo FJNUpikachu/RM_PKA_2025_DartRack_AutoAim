@@ -1,7 +1,9 @@
 # Pikachu战队2026 DartTrack Vision Project
 
- 本项目为福建师范大学Pikachu战队2026赛季飞镖镖架制导视觉部分，
- 本项目基于PKA战队2025赛季飞镖制导视觉部分编写。
+ 本项目为福建师范大学PKA战队2026赛季飞镖镖架制导视觉部分，
+ 本项目基于2025赛季飞镖制导视觉部分编写。
+ 
+ 本项目中的神经网络和卡尔曼未调试成功，因此不可使用，只能使用传统视觉识别+一欧元滤波
 
 
 ## 一、项目结构
@@ -102,7 +104,7 @@ ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 git clone https://github.com/FJNUpikachu/RM_PKA_2025_DartRack_AutoAim.git
 git add .
 git commit -m "<提交说明>"
-git push origin main
+git push origin 2026
 ```
 
 ## 维护者及开源许可证
